@@ -1,0 +1,778 @@
+﻿STUDYFLOW AI
+RESEARCH & PRODUCT BLUEPRINT
+Nền tảng cảnh báo sớm và hỗ trợ sinh viênDựa trên dữ liệu học tập, công nghệ số và quản trị dữ liệu có trách nhiệm
+Phiên bản 1.0  |  04/11/2026Bản định hướng nghiên cứu và phát triển — cần tiếp tục thẩm định, kiểm chứng và rà soát pháp lý.
+Research & Product Blueprint
+Nền tảng cảnh báo sớm và hỗ trợ sinh viên dựa trên dữ liệu học tập, công nghệ số và quản trị dữ liệu có trách nhiệm
+Phiên bản: 1.0\
+Ngày lập: 04/11/2026\
+Trạng thái: Bản định hướng nghiên cứu và phát triển --- cần tiếp tục
+thẩm định, kiểm chứng và rà soát pháp lý.
+------------------------------------------------------------------------
+1. Tóm tắt định hướng
+STUDYFLOW AI được định hướng là nền tảng số hỗ trợ sinh viên nhận diện
+khó khăn học tập, tiếp cận nguồn hỗ trợ phù hợp và theo dõi quá trình
+cải thiện. Về dài hạn, hệ thống có thể mở rộng sang Learning Analytics
+và cảnh báo sớm nguy cơ chậm tiến độ hoặc không hoàn thành chương trình
+đào tạo khi có dữ liệu học tập phù hợp, được phép sử dụng và đủ chất
+lượng.
+Định vị đề xuất:\
+Rights-aware Student Early Support Platform --- Nền tảng cảnh báo
+sớm và hỗ trợ sinh viên dựa trên dữ liệu học tập, công nghệ số và nguyên
+tắc quản trị dữ liệu có trách nhiệm.
+Sản phẩm không nên bắt đầu bằng việc yêu cầu nhà trường cung cấp dữ liệu
+SIS/LMS hoặc xây dựng ngay mô hình dự báo nguy cơ thôi học. Trước hết,
+nhóm cần chứng minh: 1. Sinh viên có những khó khăn và rào cản tiếp cận
+hỗ trợ nào. 2. Giải pháp số có thể giúp sinh viên nhận diện nhu cầu và
+tìm đúng nguồn hỗ trợ hay không. 3. Quy trình tiếp nhận, phản hồi và
+theo dõi hỗ trợ có thể vận hành hay không. 4. Sản phẩm được xây dựng từ
+nguồn tài liệu, dữ liệu, phần mềm và tài nguyên có quyền sử dụng rõ ràng
+hay không.
+1.1. Bốn trụ cột
+Student Support: Nhận diện khó khăn, điều hướng hỗ trợ và theo
+dõi tiến trình.
+Learning Analytics: Phân tích dữ liệu học tập và phát triển cảnh
+báo sớm khi có đủ dữ liệu phù hợp.
+Knowledge Provenance: Quản lý nguồn tri thức, phiên bản, tính
+chính xác và quyền sử dụng tài liệu.
+IP & Privacy Governance: Quản trị quyền tác giả, quyền sử dụng
+phần mềm, dữ liệu cá nhân và trách nhiệm của các bên.
+1.2. Nguyên tắc phát triển
+Kiểm chứng nhu cầu trước khi đầu tư công nghệ phức tạp.
+Không phụ thuộc dữ liệu nội bộ nhà trường để bắt đầu nghiên cứu và
+xây dựng prototype.
+Phân biệt dữ liệu tự khai báo, dữ liệu hệ thống ghi nhận, dữ liệu
+công khai, dữ liệu mô phỏng và dữ liệu chính thức đã xác minh.
+Không xem cảnh báo là nhãn đánh giá con người hoặc căn cứ kỷ luật.
+Không đưa tài liệu, hình ảnh, thang đo, font, mã nguồn hoặc dữ liệu
+vào sản phẩm khi chưa xác định nguồn và điều kiện sử dụng.
+Thiết kế quyền riêng tư, nguồn gốc dữ liệu và quyền sở hữu trí tuệ
+ngay từ đầu.
+Mọi tuyên bố về tính mới, hiệu quả và khả năng dự báo phải có bằng
+chứng.
+------------------------------------------------------------------------
+2. Đánh giá khách quan kế hoạch trước
+Kế hoạch ban đầu có định hướng công nghệ phù hợp với chủ đề cảnh báo sớm
+và hỗ trợ sinh viên, nhưng còn một số điểm yếu:
+-----------------------------------------------------------------------
+Khoảng trống            Rủi ro                  Mức ưu tiên
+----------------------- ----------------------- -----------------------
+Phụ thuộc dữ liệu       Dự án không thể bắt đầu Rất cao
+SIS/LMS quá sớm         nếu chưa được trường
+cấp quyền
+Chưa kiểm chứng nhu cầu Có thể xây dựng tính    Rất cao
+năng không giải quyết
+vấn đề thực tế
+Chưa chứng minh quy     Cảnh báo có thể không   Rất cao
+trình hỗ trợ            dẫn đến hành động hữu
+ích
+Chưa xác định quyền sở  Có thể tranh chấp mã    Rất cao
+hữu sản phẩm            nguồn, thiết kế, nội
+dung và kết quả nghiên
+cứu
+Chưa kiểm soát nguồn    Có thể sử dụng trái     Rất cao
+tài liệu                phép bài báo, ảnh,
+sách, thang đo hoặc nội
+dung
+Chưa có chính sách AI   Khó xác định nguồn đầu  Cao
+vào, trách nhiệm và
+quyền đối với đầu ra
+Chưa quản lý giấy phép  Có thể vi phạm điều     Rất cao
+phần mềm                kiện phân phối hoặc
+thương mại hóa
+Chưa phân biệt quyền    Có thể hiểu nhầm quyền  Rất cao
+đối với dữ liệu và      sở hữu cơ sở dữ liệu là
+quyền sở hữu trí tuệ    quyền tự do khai thác
+mọi dữ liệu
+-----------------------------------------------------------------------
+Nhận định: Không nên bắt đầu bằng câu hỏi "Làm thế nào xây dựng AI
+dự báo nguy cơ thôi học?" mà nên bắt đầu bằng "Sinh viên gặp khó khăn
+gì, vì sao họ chưa tiếp cận hỗ trợ kịp thời và một nền tảng số có thể
+cải thiện quá trình đó như thế nào?"
+------------------------------------------------------------------------
+3. Mục tiêu và câu hỏi nghiên cứu
+3.1. Mục tiêu tổng quát
+Nghiên cứu, thiết kế và đánh giá một nền tảng số lấy sinh viên làm trung
+tâm nhằm hỗ trợ nhận diện khó khăn học tập, điều hướng đến nguồn lực phù
+hợp, theo dõi quá trình hỗ trợ và tạo nền tảng để phát triển Learning
+Analytics trong giai đoạn tiếp theo.
+3.2. Câu hỏi nghiên cứu
+RQ1 --- Nhu cầu: Sinh viên gặp những khó khăn nào trong quá trình
+học tập, và những rào cản nào khiến họ không tìm kiếm hoặc không tiếp
+cận được hỗ trợ kịp thời?
+RQ2 --- Thiết kế giải pháp: Một nền tảng số kết hợp tự đánh giá,
+nhận diện tín hiệu cần hỗ trợ và điều hướng đến nguồn lực phù hợp có thể
+đáp ứng nhu cầu đó như thế nào?
+RQ3 --- Đánh giá: Giải pháp có khả dụng, dễ hiểu, tạo cảm giác an
+toàn và cải thiện khả năng tiếp cận hỗ trợ của sinh viên hay không?
+RQ4 --- Dự báo trong giai đoạn sau: Những chỉ báo học tập nào có giá
+trị dự báo nguy cơ chậm tiến độ hoặc không hoàn thành chương trình khi
+được đối chiếu với dữ liệu học tập thực tế?
+RQ4 chỉ được triển khai khi có dữ liệu lịch sử phù hợp, được phép sử
+dụng và có nhãn kết quả đáng tin cậy.
+3.3. Phương pháp nghiên cứu đề xuất
+Kết hợp: - Design Science Research Methodology (DSRM): Xác định vấn
+đề, xác định mục tiêu giải pháp, thiết kế và phát triển, trình diễn,
+đánh giá và truyền đạt kết quả. - Human-Centered Design (HCD): Đặt
+sinh viên và người trực tiếp hỗ trợ sinh viên vào trung tâm quá trình
+nghiên cứu, thiết kế và kiểm thử. - Mixed Methods: Kết hợp định tính
+và định lượng khi phù hợp.
+DSRM là phương pháp phù hợp với dự án vừa nghiên cứu vừa tạo ra sản phẩm
+công nghệ. HCD hỗ trợ kiểm chứng nhu cầu, bối cảnh và trải nghiệm người
+dùng.
+------------------------------------------------------------------------
+4. Chiến lược dữ liệu: Không cần dữ liệu nội bộ nhà trường ở giai đoạn đầu
+4.1. Ba tầng dữ liệu
+Tầng 1 --- Dữ liệu nghiên cứu ban đầu
+Mục tiêu: xác minh nhu cầu và hiểu bối cảnh.
+Nguồn có thể sử dụng: - Phỏng vấn sinh viên tự nguyện. - Khảo sát trực
+tuyến về khó khăn học tập và nhu cầu hỗ trợ. - Phỏng vấn cố vấn học tập
+hoặc người có kinh nghiệm hỗ trợ sinh viên, nếu họ đồng ý. - Tài liệu
+công khai về chương trình đào tạo, quy chế học vụ, dịch vụ hỗ trợ và quy
+trình tư vấn.
+Tầng 2 --- Dữ liệu tương tác với prototype
+Mục tiêu: kiểm tra sản phẩm có thực sự hữu ích.
+Nguồn: - Sinh viên tự khai báo mục tiêu học tập và khó khăn hiện tại. -
+Sinh viên tự đánh giá mức độ cần hỗ trợ. - Lựa chọn hình thức hỗ trợ
+mong muốn. - Thao tác trên ứng dụng: hoàn thành nhiệm vụ, tìm kiếm tài
+nguyên, gửi yêu cầu. - Phản hồi sau khi sử dụng.
+Tầng 3 --- Dữ liệu học tập chính thức
+Mục tiêu: kiểm chứng năng lực Learning Analytics và dự báo.
+Có thể bao gồm: - GPA và điểm học phần. - Số tín chỉ tích lũy. - Học
+phần chưa đạt. - Tiến độ đăng ký học phần. - Kết quả học tập qua nhiều
+học kỳ. - Dữ liệu LMS được phép sử dụng.
+Tầng 3 chỉ được triển khai khi có cơ sở pháp lý, sự chấp thuận của đơn
+vị có thẩm quyền, kế hoạch quản trị dữ liệu và phương án bảo vệ người
+học.
+4.2. Phân loại nguồn dữ liệu trong hệ thống
+------------------------------------------------------------------------
+Loại dữ liệu            Ví dụ                   Nhãn nguồn
+----------------------- ----------------------- ------------------------
+Dữ liệu tự khai báo     Sinh viên cho biết đang self_reported
+gặp khó khăn
+Dữ liệu do hệ thống ghi Sinh viên gửi yêu cầu   system_recorded
+nhận                    hỗ trợ
+Dữ liệu công khai       Quy chế đào tạo         public_reference
+Dữ liệu mô phỏng        Hồ sơ giả lập để trình  synthetic
+diễn
+Dữ liệu chính thức      Điểm được đồng bộ từ    institution_verified
+SIS sau này
+------------------------------------------------------------------------
+Mỗi bản ghi cần có nguồn, thời điểm ghi nhận, chủ thể hoặc hệ thống tạo
+dữ liệu, mục đích sử dụng, trạng thái xác minh, thời hạn lưu trữ và
+quyền truy cập.
+4.3. Phương pháp nghiên cứu người dùng
+Giai đoạn định tính
+Có thể bắt đầu với khoảng 12--20 cuộc phỏng vấn sinh viên và một số
+người làm công tác hỗ trợ như một kế hoạch thăm dò. Đây không phải cỡ
+mẫu đại diện; số lượng cuối cùng nên dựa trên độ đa dạng người tham gia
+và mức độ bão hòa chủ đề.
+Chủ đề phỏng vấn: - Khó khăn học tập thường gặp. - Thời điểm sinh viên
+nhận ra mình cần hỗ trợ. - Nguồn hỗ trợ hiện tại. - Rào cản khi liên hệ
+cố vấn hoặc nhà trường. - Hình thức hỗ trợ mong muốn. - Mức độ tin tưởng
+đối với nền tảng số.
+Giai đoạn định lượng
+Phát triển bảng hỏi dựa trên kết quả định tính.
+Thử nghiệm câu hỏi với nhóm nhỏ trước khi phát hành chính thức.
+Xác định cỡ mẫu theo mục tiêu phân tích, số biến, phương pháp thống
+kê và sai số mong muốn.
+Báo cáo cách tuyển mẫu, tỷ lệ phản hồi và giới hạn đại diện.
+Không mặc nhiên xem 100 hoặc 200 người là đủ. Cỡ mẫu phải có căn cứ
+phương pháp.
+4.4. Gợi ý nhóm câu hỏi khảo sát
+-----------------------------------------------------------------------
+Nhóm                    Nội dung                Ví dụ
+----------------------- ----------------------- -----------------------
+Khó khăn học tập        Trở ngại trong quá      Điều gì khiến bạn khó
+trình học               duy trì tiến độ học
+tập?
+Khả năng nhận diện      Nhận ra nhu cầu hỗ trợ  Bạn thường nhận ra mình
+cần hỗ trợ vào thời
+điểm nào?
+Hành vi tìm kiếm hỗ trợ Nguồn hỗ trợ hiện tại   Khi gặp khó khăn, bạn
+thường tìm đến nguồn hỗ
+trợ nào?
+Rào cản tiếp cận        Lý do không tìm hỗ trợ  Điều gì khiến bạn ngần
+ngại liên hệ cố vấn
+hoặc nhà trường?
+Mong muốn công nghệ     Hình thức hỗ trợ        Bạn muốn nền tảng hỗ
+trợ theo hình thức nào?
+-----------------------------------------------------------------------
+Có thể dùng thang Likert 5 mức cho câu hỏi đo nhận thức, mức độ đồng ý
+hoặc tần suất. Phải phân biệt câu hỏi đo khái niệm tâm lý với câu hỏi
+thu thập ý kiến sản phẩm. Không gọi bảng hỏi tự thiết kế là thang đo tâm
+lý đã được kiểm định.
+------------------------------------------------------------------------
+5. Định vị và phạm vi sản phẩm
+5.1. Định vị
+STUDYFLOW AI là nền tảng số giúp sinh viên: - Nhận diện khó khăn học
+tập. - Tự đánh giá nhu cầu hỗ trợ. - Tìm kiếm nguồn hỗ trợ phù hợp. -
+Nhận hướng dẫn hành động. - Theo dõi yêu cầu và tiến trình hỗ trợ.
+Không tuyên bố phiên bản đầu tiên có thể dự báo chính xác nguy cơ thôi
+học.
+5.2. Năm phân hệ MVP
+1. Student Check-in --- Tự đánh giá định kỳ
+Sinh viên tự đánh giá tiến độ, mức độ khó khăn, môn học cần hỗ trợ và
+nhu cầu hiện tại. Không tự động gán nhãn rủi ro.
+2. Learning Progress --- Theo dõi tiến độ
+Sinh viên cập nhật mục tiêu và tiến độ do mình quản lý. Giao diện phải
+ghi rõ dữ liệu nào là tự khai báo, không phải kết quả chính thức của
+trường.
+3. Support Navigator --- Điều hướng hỗ trợ
+Gợi ý tài liệu học tập, hướng dẫn học vụ, cố vấn, dịch vụ hỗ trợ hoặc
+kênh liên hệ phù hợp.
+4. AI Support Assistant --- Trợ lý hỗ trợ
+Giải đáp dựa trên kho tài liệu đã xác minh, hướng dẫn tìm nguồn hỗ trợ
+và chuyển tiếp sang con người khi cần. Không chẩn đoán tâm lý hoặc tự
+quyết định học vụ.
+5. Support Follow-up --- Theo dõi hỗ trợ
+Sinh viên theo dõi yêu cầu đã gửi, bước tiếp theo, phản hồi và mức độ
+hữu ích. Giai đoạn đầu có thể vận hành với nhóm hỗ trợ thử nghiệm do dự
+án tổ chức.
+5.3. Chưa đưa vào MVP
+Dự báo xác suất thôi học.
+Xếp hạng sinh viên theo rủi ro.
+Dashboard phân loại hàng loạt sinh viên.
+Phân tích cảm xúc hoặc suy luận sức khỏe tâm thần.
+Tích hợp nhiều hệ thống nội bộ cùng lúc.
+Chatbot tự quyết định biện pháp can thiệp.
+Các chức năng này đòi hỏi dữ liệu, bằng chứng, quy trình quản trị và
+trách nhiệm cao hơn.
+------------------------------------------------------------------------
+6. Kiến trúc phần mềm đề xuất
+6.1. Nguyên tắc
+Chuyển từ tư duy Data-first sang Service-first, Evidence-driven:
+xây dựng quanh quy trình hỗ trợ đã được kiểm chứng thay vì phụ thuộc kho
+dữ liệu nhà trường.
+Ở giai đoạn đầu nên dùng Modular Monolith, chưa cần microservices,
+Hadoop hoặc Spark.
+6.2. Kiến trúc logic
+STUDENT WEB APP                 SUPPORT STAFF PORTAL       |                                  |       +---------------+------------------+                       |             APPLICATION LAYER               Modular Monolith                       |       +---------------+-----------------------+       |               |                       |  Identity &       Student Check-in       Support Navigator  Consent       |               |                       |       +---------------+-----------------------+                       |          Case Management / AI Assistant                       |                  Evaluation                       |        GOVERNANCE & PROVENANCE LAYER       +---------------+-----------------------+       |               |                       | Consent Manager  Source Registry          IP Registry       |               |                       | Audit & Versioning / Data Purpose / Retention                       |                 DATA LAYER          PostgreSQL / Document Store                       |              EXTERNAL DEPENDENCIES       LLM API / Open-source Libraries /             Licensed Content
+6.3. Công nghệ có thể lựa chọn
+-----------------------------------------------------------------------
+Thành phần              Công nghệ tham khảo     Lý do
+----------------------- ----------------------- -----------------------
+Frontend                Next.js + TypeScript    Web responsive
+Backend                 NestJS hoặc Supabase    API và nghiệp vụ
+Database                PostgreSQL              Dữ liệu quan hệ
+Authentication          Supabase Auth hoặc      Đăng nhập và phân quyền
+tương đương
+AI Assistant            LLM API + RAG           Trả lời dựa trên tài
+liệu được duyệt
+Analytics               Python, Pandas          Phân tích dữ liệu thử
+nghiệm
+Dashboard               Recharts                Trực quan hóa
+Testing                 Playwright, Vitest      Kiểm thử chức năng và
+giao diện
+-----------------------------------------------------------------------
+Không cần triển khai tất cả công nghệ ngay lập tức. Ưu tiên prototype
+hoạt động, dữ liệu có nguồn gốc rõ ràng và quyền truy cập được kiểm
+soát.
+6.4. Phân biệt hai chức năng AI
+AI chức năng 1 --- Hỗ trợ thông tin - Tìm kiếm quy chế học vụ. -
+Giải thích quy trình đăng ký học phần. - Hướng dẫn tìm tài nguyên học
+tập. - Gợi ý bước giải quyết khó khăn. - Điều hướng đến người hỗ trợ.
+Đầu ra phải dựa trên tài liệu được kiểm tra, có nguồn tham khảo và cơ
+chế thừa nhận khi thiếu thông tin.
+AI chức năng 2 --- Phân tích và dự báo nguy cơ - Xây dựng chỉ báo
+học tập. - Đánh giá giá trị dự báo. - Huấn luyện và so sánh mô hình. -
+Đánh giá precision, recall, F1, F2, PR-AUC, calibration và
+false-positive rate. - Giải thích kết quả để con người xem xét.
+Chỉ triển khai chức năng 2 khi có dữ liệu phù hợp và quy trình đánh giá
+khoa học.
+------------------------------------------------------------------------
+7. Quản trị quyền sở hữu trí tuệ và bản quyền
+7.1. Nguyên tắc IP-by-design
+Quyền sở hữu trí tuệ, quyền sử dụng dữ liệu và quyền riêng tư phải được
+tính đến ngay từ khâu nghiên cứu, thiết kế và phát triển.
+Cần phân biệt: - Quyền tác giả. - Quyền sở hữu hoặc quyền tài sản. -
+Quyền sử dụng theo giấy phép. - Quyền đối với dữ liệu cá nhân. - Quyền
+khai thác thương mại. - Nghĩa vụ ghi công và tuân thủ giấy phép.
+Có quyền sử dụng tài liệu không đồng nghĩa sở hữu tài liệu. Sở hữu mã
+nguồn cũng không đồng nghĩa được tự do sử dụng dữ liệu cá nhân bên trong
+hệ thống.
+7.2. Phân loại tài liệu đầu vào
+-----------------------------------------------------------------------
+Nhóm                    Ví dụ                   Cách xử lý
+----------------------- ----------------------- -----------------------
+Tài liệu do nhóm tạo    Hướng dẫn, sơ đồ, thiết Lưu tác giả, phiên bản,
+kế                      thỏa thuận quyền
+Văn bản chính thức      Luật, nghị định, quy    Dẫn nguồn chính thức,
+chế công khai           ghi hiệu lực và phạm vi
+Tài liệu nghiên cứu     Bài báo, luận văn, sách Trích dẫn; kiểm tra
+quyền sao chép và phân
+phối
+Tài liệu giấy phép mở   CC BY, CC BY-SA, OER    Kiểm tra đúng phiên bản
+và điều kiện
+Tài liệu cấp phép riêng Giáo trình, bộ câu hỏi, Xin phép nếu cần
+hình ảnh, thang đo
+Tài liệu chưa rõ quyền  Ảnh Internet, tài liệu  Không đưa vào sản phẩm
+tải lại                 cho đến khi xác minh
+-----------------------------------------------------------------------
+Tài liệu công khai không mặc nhiên thuộc phạm vi công cộng. Bài báo miễn
+phí truy cập vẫn có thể được bảo hộ. Hình ảnh tìm thấy qua công cụ tìm
+kiếm không tự động được phép sử dụng.
+7.3. Knowledge Provenance Record
+Mỗi tài liệu đưa vào kho tri thức AI cần lưu: - Tên tài liệu. - Tác giả
+hoặc đơn vị ban hành. - Nguồn chính thức. - Ngày ban hành và phiên
+bản. - Tình trạng hiệu lực. - Quyền sử dụng. - Phạm vi sử dụng. - Người
+kiểm duyệt. - Ngày rà soát gần nhất.
+Mỗi đoạn nội dung AI sử dụng nên có ID tài liệu gốc, vị trí trang/đoạn,
+phiên bản, điều kiện sử dụng và người phê duyệt.
+Tài liệu chưa được phê duyệt không được đưa vào kho RAG chính thức.
+7.4. Bản đồ tài sản trí tuệ
+-----------------------------------------------------------------------
+Thành phần              Đối tượng quản lý       Hồ sơ
+----------------------- ----------------------- -----------------------
+Tên STUDYFLOW AI        Nhãn hiệu, tên thương   Tra cứu và hồ sơ đăng
+mại                     ký nếu phù hợp
+Logo                    Tác phẩm mỹ thuật ứng   File gốc, tác giả, thỏa
+dụng                    thuận quyền
+UI/UX                   Thiết kế giao diện,     Figma history, nguồn
+icon, hình ảnh          asset, giấy phép
+Source code             Chương trình máy tính   Git history, tác giả,
+thỏa thuận
+Kiến trúc phần mềm      Tài liệu thiết kế       Phiên bản, người đóng
+góp
+Bộ dữ liệu              Cấu trúc và nội dung dữ Data inventory, nguồn
+liệu                    và căn cứ xử lý
+Bộ câu hỏi              Nội dung và cấu trúc    Tác giả, nguồn, giấy
+bảng hỏi                phép
+AI prompt/RAG           Prompt, cấu hình, tài   Lịch sử chỉnh sửa và
+liệu                    nguồn
+Nội dung học tập        Bài viết, hướng dẫn     Tác giả và nguồn trích
+dẫn
+Báo cáo nghiên cứu      Bài viết, bảng biểu,    Đóng góp và trích dẫn
+hình ảnh
+-----------------------------------------------------------------------
+Không phải mọi thành phần đều được bảo hộ theo cùng một cơ chế. Cần xác
+định hình thức bảo hộ phù hợp cho từng tài sản.
+7.5. Background IP và Foreground IP
+Background IP: Tài sản trí tuệ mà thành viên hoặc bên thứ ba đã
+sở hữu trước khi tham gia dự án.
+Foreground IP: Tài sản trí tuệ được tạo ra trong quá trình thực
+hiện dự án.
+Ví dụ:
+-----------------------------------------------------------------------
+Tài sản                 Phân loại               Xử lý
+----------------------- ----------------------- -----------------------
+Template Figma cá nhân  Background IP           Chủ sở hữu giữ quyền;
+có trước                                        dự án xin quyền sử dụng
+Code viết cho dự án     Foreground IP           Xác định tác giả, chủ
+sở hữu và quyền khai
+thác
+Thư viện mã nguồn mở    Third-party IP          Tuân thủ giấy phép
+Bộ câu hỏi nhóm tự      Foreground IP           Ghi tác giả và phiên
+thiết kế                                        bản
+Thang đo nghiên cứu bên Third-party IP          Kiểm tra giấy phép và
+khác                                            quyền chỉnh sửa
+Tài liệu sinh viên gửi  Dữ liệu do người dùng   Xác định quyền, mục
+cung cấp                đích và phạm vi xử lý
+-----------------------------------------------------------------------
+7.6. Thỏa thuận giữa thành viên
+Nên lập văn bản STUDYFLOW AI --- Founder & IP Contribution
+Agreement, xác định: - Danh sách thành viên. - Vai trò và trách
+nhiệm. - Tài sản có trước. - Tài sản tạo mới. - Tác giả và chủ sở hữu. -
+Quyền khai thác, chỉnh sửa, phân phối và thương mại hóa. - Cách xử lý
+khi thành viên rời nhóm. - Quyền công bố học thuật và thứ tự tác giả. -
+Cơ chế giải quyết tranh chấp.
+Không mặc định mọi thành viên có quyền sở hữu ngang nhau chỉ vì cùng
+tham gia. Cũng không mặc định trưởng nhóm sở hữu toàn bộ sản phẩm. Cần
+phân biệt quyền nhân thân của tác giả với quyền tài sản và chủ thể sở
+hữu theo pháp luật và thỏa thuận.
+Trước khi nhận tài trợ, đặt hàng nghiên cứu hoặc ký hợp tác với trường,
+cần kiểm tra quy chế IP, hợp đồng tài trợ, quyền công bố, quyền sử dụng
+mã nguồn và điều khoản chuyển giao.
+7.7. Quản lý phần mềm bên thứ ba
+Dùng GitHub hoặc GitLab từ ngày đầu: - Mỗi thành viên dùng tài khoản
+riêng. - Không dùng chung tài khoản Git. - Commit rõ nội dung. - Dùng
+pull request để duyệt. - Lưu phiên bản code, tài liệu, sơ đồ và giao
+diện.
+Git history hỗ trợ chứng minh quá trình đóng góp nhưng không tự động
+quyết định chủ sở hữu pháp lý.
+Software Bill of Materials (SBOM)
+Mỗi thư viện cần ghi: - Tên và phiên bản. - Nhà phát triển. - Nguồn
+tải. - Giấy phép. - Quyền sửa đổi và phân phối. - Hạn chế thương mại. -
+Nghĩa vụ công bố mã nguồn phái sinh.
+Có thể dùng SPDX hoặc CycloneDX.
+-----------------------------------------------------------------------
+Giấy phép               Đặc điểm                Lưu ý
+----------------------- ----------------------- -----------------------
+MIT                     Tương đối linh hoạt     Giữ thông báo bản quyền
+và giấy phép
+Apache 2.0              Linh hoạt, có điều      Giữ thông báo và xử lý
+khoản bằng sáng chế     NOTICE
+GPL                     Copyleft mạnh           Phân phối tác phẩm phái
+sinh có thể kéo theo
+nghĩa vụ cấp mã nguồn
+AGPL                    Copyleft có điều khoản  Rà soát khi triển khai
+liên quan cung cấp qua  SaaS
+mạng
+Proprietary             Theo hợp đồng nhà cung  Đọc điều khoản sử dụng
+cấp
+-----------------------------------------------------------------------
+Không có giấy phép không có nghĩa là được tự do sao chép. Mã nguồn công
+khai không đồng nghĩa mã nguồn được phép sử dụng tùy ý.
+7.8. Quản lý tài nguyên UI/UX
+Cần quản lý quyền của: - Font. - Icon. - Ảnh minh họa. - Hình nền. -
+Component UI. - Template Figma. - Illustration. - Video và âm thanh. -
+Hình ảnh AI tạo từ ảnh tham chiếu.
+Mỗi asset nên có: - Asset ID. - Tên. - Nguồn. - Tác giả/nhà cung cấp. -
+Giấy phép và phiên bản. - Quyền thương mại. - Quyền sửa đổi. - Yêu cầu
+ghi công. - Bằng chứng giấy phép. - Trạng thái: Approved / Pending /
+Rejected.
+Chỉ asset trạng thái Approved mới được đưa vào bản phát hành.
+------------------------------------------------------------------------
+8. Quản trị nghiên cứu khoa học và bản quyền thang đo
+8.1. Ba trường hợp sử dụng bảng hỏi
+A. Tự xây dựng câu hỏi - Có cơ sở lý thuyết. - Xác định khái niệm. -
+Thẩm định nội dung. - Thử nghiệm câu hỏi. - Đánh giá độ tin cậy và giá
+trị đo lường khi phù hợp.
+B. Điều chỉnh thang đo có sẵn - Kiểm tra chủ sở hữu. - Kiểm tra giấy
+phép. - Xác minh quyền dịch thuật. - Xác minh quyền sửa đổi. - Tuân thủ
+trích dẫn. - Kiểm tra điều kiện nghiên cứu hoặc thương mại.
+C. Sử dụng công cụ đo chuẩn hóa - Tuân thủ điều kiện cấp phép. -
+Không tự ý sửa câu chữ rồi tuyên bố vẫn sử dụng nguyên trạng công cụ
+chuẩn hóa.
+8.2. Measurement Instrument Register
+--------------------------------------------------------------------------
+Công cụ        Khái niệm đo   Nguồn          Quyền sử dụng  Trạng thái
+-------------- -------------- -------------- -------------- --------------
+Bảng hỏi khó   Khó khăn tự    Nhóm tự xây    Nhóm quản lý   Chờ thẩm định
+khăn học tập   báo cáo        dựng
+Thang đo tự    Autonomy       Nghiên cứu gốc Cần xác minh   Chưa phê duyệt
+chủ
+SUS            Khả năng sử    Nguồn chuẩn    Kiểm tra điều  Chờ xác minh
+dụng                          kiện sử dụng
+và bản dịch
+Bộ câu hỏi     Nhu cầu hỗ trợ Nhóm tự xây    Nhóm quản lý   Có thể thử
+phỏng vấn                     dựng                          nghiệm
+--------------------------------------------------------------------------
+8.3. Đồng ý tham gia và quyền công bố
+Cần phân biệt: 1. Đồng ý tham gia nghiên cứu. 2. Đồng ý xử lý dữ liệu cá
+nhân theo mục đích và căn cứ phù hợp. 3. Đồng ý ghi âm, trích dẫn lời
+nói, hình ảnh hoặc công bố thông tin nhận diện nếu có.
+Đồng ý khảo sát không tự động đồng nghĩa với đồng ý đăng câu trả lời lên
+website hoặc dùng làm ví dụ trong cuộc thi.
+Cần có kế hoạch: - Mã hóa định danh. - Giới hạn quyền truy cập. - Lưu
+riêng thông tin liên hệ và câu trả lời. - Xác định thời hạn lưu trữ. -
+Xóa hoặc ẩn danh khi hết mục đích. - Không tải dữ liệu nhận diện cá nhân
+lên công cụ AI bên ngoài nếu chưa có căn cứ và kiểm soát phù hợp.
+------------------------------------------------------------------------
+9. Quản trị việc sử dụng AI
+9.1. AI Usage Register
+-----------------------------------------------------------------------
+Hoạt động               Công cụ                 Cách quản lý
+----------------------- ----------------------- -----------------------
+Viết nội dung hướng dẫn AI hỗ trợ               Con người kiểm tra và
+chịu trách nhiệm
+Sinh mã nguồn           AI coding assistant     Review code, kiểm tra
+giấy phép và bảo mật
+Thiết kế hình ảnh       Công cụ tạo ảnh         Lưu prompt, nguồn tham
+chiếu, lịch sử chỉnh
+sửa
+Trả lời học vụ          LLM + RAG               Chỉ dùng nguồn đã phê
+duyệt
+Phân tích khảo sát      AI hỗ trợ               Đối chiếu dữ liệu gốc
+và kết quả thống kê
+Tạo dữ liệu mô phỏng    Script hoặc AI          Gắn nhãn synthetic,
+không trình bày như dữ
+liệu thật
+-----------------------------------------------------------------------
+9.2. Lưu bằng chứng đóng góp của con người
+Với mỗi tài sản quan trọng, lưu: - Bản mô tả ý tưởng ban đầu. - Bản
+thiết kế đầu tiên. - Lịch sử thay đổi. - Prompt và kết quả AI hỗ trợ. -
+Các lần con người đánh giá, lựa chọn và chỉnh sửa. - Bản cuối cùng được
+phê duyệt. - Người chịu trách nhiệm về nội dung và tính hợp pháp.
+Không chỉ lưu ảnh chụp kết quả cuối cùng.
+9.3. Kiểm tra điều khoản nhà cung cấp AI
+Trước khi dùng API AI cho sản phẩm, kiểm tra: - Dữ liệu gửi lên được xử
+lý thế nào. - Có được dùng để cải thiện mô hình không. - Thời hạn lưu
+trữ. - Cơ chế xóa dữ liệu. - Quyền đối với đầu ra. - Hạn chế sử dụng
+thương mại. - Trách nhiệm khi đầu ra vi phạm quyền bên thứ ba. - Khả
+năng xử lý dữ liệu cá nhân.
+Không khẳng định đầu ra AI thuộc hoàn toàn quyền sở hữu của nhóm chỉ vì
+nhóm trả phí API.
+------------------------------------------------------------------------
+10. UI/UX: Minh bạch quyền và tạo cảm giác an toàn
+10.1. Trang dữ liệu và quyền riêng tư
+Sinh viên cần biết: - Dữ liệu nào được thu thập. - Nguồn dữ liệu. - Dữ
+liệu tự khai báo hay đã xác minh. - Mục đích sử dụng. - Ai có thể xem. -
+Thời hạn lưu trữ. - Cách yêu cầu sửa hoặc thực hiện quyền phù hợp.
+Không đặt tất cả trong một trang điều khoản dài khó đọc.
+10.2. Trang nguồn tài liệu AI
+Khi AI trả lời câu hỏi học vụ, hiển thị: - Câu trả lời. - Nguồn tham
+khảo. - Phiên bản tài liệu. - Ngày rà soát. - Trạng thái kiểm duyệt.
+Nếu không có nguồn đáng tin cậy, AI phải nói rõ chưa xác minh được.
+10.3. Trang Credits & Attributions
+Ghi nhận: - Tác giả nội dung. - Đơn vị cung cấp tài liệu. - Tác giả thư
+viện mã nguồn. - Nguồn hình ảnh và font. - Công cụ AI được sử dụng. -
+Đóng góp chính của nhóm.
+10.4. Kiểm soát dữ liệu người dùng
+Sinh viên cần có khả năng: - Xem thông tin của mình. - Sửa dữ liệu tự
+khai báo sai. - Xem mục đích sử dụng. - Quản lý lựa chọn đồng ý phù
+hợp. - Gửi yêu cầu liên quan đến dữ liệu.
+10.5. Tôn trọng khác biệt văn hóa và khả năng tiếp cận
+Ngôn ngữ trung tính, không kỳ thị.
+Không dùng màu sắc cảnh báo quá mức cho khó khăn học tập thông
+thường.
+Không công khai tình trạng hỗ trợ.
+Có lựa chọn trao đổi với con người.
+Hỗ trợ tiếng Việt dễ hiểu.
+Hỗ trợ thiết bị di động và khả năng tiếp cận cho người khuyết tật.
+------------------------------------------------------------------------
+11. Văn hóa và truyền thông trong STUDYFLOW AI
+Đề tài không phải nghiên cứu bảo tồn di sản trực tiếp. Không nên đưa thư
+viện di sản vào MVP chỉ để tạo yếu tố văn hóa.
+Góc nhìn bảo tồn văn hóa và truyền thông nên được áp dụng vào: - Bảo vệ
+nguồn tri thức. - Tôn trọng tác giả và cộng đồng cung cấp nội dung. -
+Truyền thông không kỳ thị. - Minh bạch nguồn tài liệu. - Tôn trọng quyền
+tự chủ của người học. - Bảo đảm ngôn ngữ phù hợp với nhiều nhóm sinh
+viên.
+Nếu tương lai đưa tri thức văn hóa, lịch sử địa phương hoặc tri thức bản
+địa vào sản phẩm, cần xác định cộng đồng/chủ thể liên quan, xin phép phù
+hợp, ghi nguồn, bảo đảm bối cảnh và có cơ chế yêu cầu sửa hoặc gỡ nội
+dung.
+------------------------------------------------------------------------
+12. Đánh giá sản phẩm và KPI
+12.1. Bốn nhóm chỉ số
+-----------------------------------------------------------------------
+Nhóm                    Chỉ số                  Câu hỏi
+----------------------- ----------------------- -----------------------
+Nhu cầu                 Tỷ lệ người tham gia    Có giải quyết đúng vấn
+xác định có nhu cầu hỗ  đề?
+trợ; nhóm khó khăn phổ
+biến
+UX                      Task completion rate,   Người dùng có thể sử
+thời gian hoàn thành,   dụng?
+lỗi thao tác, SUS
+Hỗ trợ                  Tỷ lệ yêu cầu được phản Quy trình hỗ trợ có
+hồi, thời gian phản     hoạt động?
+hồi, tỷ lệ hoàn tất,
+đánh giá hữu ích
+Tác động                Khả năng tìm kiếm hỗ    Có tạo ra thay đổi tích
+trợ, cảm nhận tự chủ,   cực?
+tiến độ học tập nếu đo
+được
+-----------------------------------------------------------------------
+12.2. Ba cấp độ bằng chứng
+Feasibility: Có thể triển khai và vận hành không?
+Usability: Người dùng có sử dụng được và hiểu được không?
+Effectiveness: Giải pháp có tạo ra thay đổi tích cực không?
+Điểm SUS tốt không đồng nghĩa giảm tỷ lệ thôi học. Người dùng thích
+chatbot cũng không chứng minh chatbot cải thiện kết quả học tập.
+12.3. Các vòng thử nghiệm
+Vòng 1 --- Kiểm thử khả dụng - Nhóm nhỏ sinh viên tình nguyện. -
+Giao nhiệm vụ cụ thể. - Quan sát thao tác. - Phỏng vấn sau trải nghiệm.
+Vòng 2 --- Thử nghiệm quy trình hỗ trợ - Sinh viên tự nguyện gửi yêu
+cầu. - Có người thật tiếp nhận. - Theo dõi thời gian phản hồi và kết
+quả. - Đánh giá trải nghiệm trước và sau.
+Vòng 3 --- Đánh giá tác động Chỉ thực hiện khi can thiệp ổn định,
+câu hỏi nghiên cứu rõ và thiết kế phù hợp. Có thể cân nhắc trước--sau,
+nhóm so sánh tương đồng hoặc triển khai theo từng đợt. Nếu muốn kết luận
+nhân quả, cần tính cỡ mẫu và kiểm soát yếu tố gây nhiễu.
+Không được từ chối hỗ trợ cần thiết cho nhóm đối chứng nếu việc đó gây
+bất lợi cho sinh viên.
+------------------------------------------------------------------------
+13. Lộ trình 20 tuần
+Tuần 1--3: Research & IP Discovery
+Tổng quan nghiên cứu.
+Xác định Research Gap.
+Phân tích sản phẩm tương tự.
+Lập danh mục tài liệu và quyền sử dụng.
+Ký thỏa thuận đóng góp nội bộ.
+Đầu ra: Research Gap, IP Register, Source Registry, Team Agreement.
+Tuần 4--6: User Research & Legal Design
+Phỏng vấn và khảo sát.
+Xây dựng bộ câu hỏi.
+Rà soát quyền sử dụng thang đo.
+Thiết kế biểu mẫu đồng ý.
+Xây dựng Data Management Plan.
+Đầu ra: Research Protocol, User Research Report, Data Management
+Plan.
+Tuần 7--9: Product & UX Design
+User journey.
+Wireframe.
+Design system.
+Kiểm tra font, icon, ảnh và template.
+Kiểm thử prototype.
+Lưu lịch sử thiết kế và quyền tài nguyên.
+Đầu ra: Figma Prototype, Design System, Asset Register.
+Tuần 10--14: MVP Development
+Ứng dụng và cơ sở dữ liệu.
+AI Assistant.
+Kho tri thức có nguồn gốc.
+Quản lý đồng ý và phân quyền.
+Kiểm tra dependency và giấy phép.
+Đầu ra: Working MVP, Architecture Document, SBOM, IP Registry.
+Tuần 15--17: Testing & Validation
+Kiểm thử chức năng.
+Kiểm thử bảo mật.
+Kiểm thử trải nghiệm.
+Kiểm thử chất lượng AI.
+Đánh giá nguồn tài liệu và quy trình dữ liệu.
+Đầu ra: Test Report, Usability Report, AI Evaluation Report.
+Tuần 18--20: Pilot & Research Publication Preparation
+Thử nghiệm hỗ trợ tự nguyện.
+Đánh giá quy trình.
+Tổng hợp nghiên cứu.
+Kiểm tra trích dẫn và quyền công bố.
+Hoàn thiện hồ sơ IP.
+Chuẩn bị đề xuất hợp tác nhà trường.
+Đầu ra: Pilot Report, Research Report, IP Dossier, Partnership
+Proposal.
+13.1. Các cổng kiểm soát
+-----------------------------------------------------------------------
+Gate                                Điều kiện
+----------------------------------- -----------------------------------
+Problem Gate                        Có bằng chứng về vấn đề thực tế
+Solution Gate                       Sinh viên hiểu và thấy giải pháp có
+ích
+IP Gate 1                           Xác định nguồn và quyền sử dụng tài
+liệu
+IP Gate 2                           Thành viên thống nhất quyền đối với
+tài sản tạo ra
+Prototype Gate                      Các luồng chính hoạt động, dữ liệu
+có nguồn rõ
+IP Gate 3                           Asset UI/UX được kiểm tra giấy phép
+IP Gate 4                           Mã nguồn và dependency có danh mục
+giấy phép
+AI Gate                             AI có hồ sơ nguồn và kiểm soát đầu
+ra
+Support Gate                        Có người tiếp nhận và quy trình
+phản hồi
+Partnership Gate                    Có bằng chứng, hồ sơ dữ liệu và
+phạm vi thử nghiệm rõ
+-----------------------------------------------------------------------
+------------------------------------------------------------------------
+14. Hồ sơ dự án cần có
+A. Nghiên cứu và học thuật
+Research Proposal và Research Gap.
+Literature Review & Citation Register.
+Research Instrument Register.
+Research Ethics & Consent Documents.
+Research Data Management Plan.
+B. Quyền sở hữu trí tuệ
+Founder & IP Contribution Agreement.
+IP Asset Register.
+Background IP / Foreground IP Register.
+Source & License Registry.
+AI Usage Register.
+Third-party Permission Archive.
+C. Kỹ thuật và phần mềm
+Software Architecture Document.
+Git Repository & Contribution History.
+Software Bill of Materials (SBOM).
+Dependency License Report.
+Security & Privacy Review.
+Release & Version History.
+D. UI/UX và truyền thông
+Design System & Figma History.
+UI Asset License Register.
+Accessibility Review.
+AI Content Attribution & Source Policy.
+Privacy & Transparency UX.
+E. Kiểm chứng sản phẩm
+Prototype Testing Report.
+Usability Evaluation.
+AI Answer Quality Evaluation.
+Pilot Evaluation Report.
+Risk Register.
+Product Roadmap.
+------------------------------------------------------------------------
+15. Tính mới và đóng góp tiềm năng
+Không nên tuyên bố các tính năng sau là sáng tạo độc quyền: - AI chatbot
+tư vấn sinh viên. - Hệ thống dự báo nguy cơ học tập. - Dashboard tiến
+độ. - Gợi ý tài liệu. - Phân tích dữ liệu học tập.
+Các hướng đóng góp có thể nghiên cứu:
+-----------------------------------------------------------------------
+Hướng                   Nội dung                Cần chứng minh
+----------------------- ----------------------- -----------------------
+Student-centered Early  Kết nối nhận diện khó   Sinh viên tiếp cận hỗ
+Support                 khăn với hành động hỗ   trợ tốt hơn không
+trợ
+Provenance-aware AI     AI sử dụng tri thức đã  Độ chính xác, khả năng
+Support                 kiểm chứng, có nguồn và truy xuất và giảm câu
+phiên bản               trả lời sai
+Rights-aware Digital    Quản lý quyền tài liệu, Khả năng kiểm soát
+Learning Platform       dữ liệu, asset và mã    nguồn gốc, giấy phép và
+nguồn từ đầu            tuân thủ
+-----------------------------------------------------------------------
+Tính mới có thể nằm ở cách kết hợp, triển khai và kiểm chứng trong bối
+cảnh giáo dục đại học Việt Nam. Đây vẫn là giả thuyết cần đối chiếu
+nghiên cứu và sản phẩm hiện có trước khi khẳng định.
+------------------------------------------------------------------------
+16. Khung pháp lý và tài liệu tham khảo cần rà soát
+Các văn bản và nguồn dưới đây là danh mục khởi đầu. Nhóm phải kiểm tra
+văn bản gốc, tình trạng hiệu lực, văn bản hướng dẫn và điều khoản áp
+dụng tại thời điểm triển khai.
+Luật Sở hữu trí tuệ và các văn bản sửa đổi, hướng dẫn hiện hành.
+Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15.
+Luật Trí tuệ nhân tạo số 134/2025/QH15.
+Nghị định 134/2026/NĐ-CP về quyền tác giả, quyền liên quan.
+Creative Commons --- hướng dẫn giấy phép và ghi công.
+SPDX hoặc CycloneDX --- tiêu chuẩn SBOM.
+Peffers et al. (2007), *A Design Science Research Methodology for
+Information Systems Research*.
+Jisc, Code of Practice for Learning Analytics.
+Plak et al. (2022), nghiên cứu về hệ thống cảnh báo sớm và tư vấn
+sinh viên.
+Lưu ý pháp lý: Các cấu trúc hồ sơ và thỏa thuận trong tài liệu này
+là khuyến nghị quản trị dự án, không phải văn bản pháp lý đã được luật
+sư thẩm định. Trước khi ký chuyển giao quyền, xử lý dữ liệu cá nhân thực
+tế, công bố dữ liệu nghiên cứu hoặc thương mại hóa sản phẩm, nhóm nên
+được chuyên gia pháp lý phù hợp rà soát.
+------------------------------------------------------------------------
+17. Quyết định chiến lược cuối cùng
+Chưa xây dựng AI dự báo nguy cơ thôi học ở giai đoạn đầu.
+Phát triển STUDYFLOW AI theo hướng: 1. Xác định khó khăn và nhu cầu hỗ
+trợ bằng dữ liệu tự nguyện. 2. Kết nối sinh viên với nguồn hỗ trợ và
+hướng dẫn hành động phù hợp. 3. Theo dõi và đánh giá hiệu quả quá trình
+hỗ trợ. 4. Quản lý nguồn tri thức, bản quyền và quyền sử dụng ngay từ
+đầu. 5. Chỉ mở rộng sang Learning Analytics và dự báo khi có dữ liệu học
+tập chính thức, hợp pháp và đủ chất lượng.
+Nguyên tắc kết luận: STUDYFLOW AI phải chứng minh không chỉ rằng sản
+phẩm có thể hỗ trợ sinh viên, mà còn chứng minh sản phẩm được tạo ra từ
+nguồn hợp pháp, có đóng góp trí tuệ rõ ràng và có khả năng kiểm soát
+quyền sử dụng khi mở rộng.
+------------------------------------------------------------------------
+Phụ lục A --- Checklist triển khai
+Nghiên cứu
+[ ] Research Proposal và Research Gap
+[ ] Literature Review & Citation Register
+[ ] Research Instrument Register
+[ ] Research Ethics & Consent Documents
+[ ] Research Data Management Plan
+Sở hữu trí tuệ
+[ ] Founder & IP Contribution Agreement
+[ ] IP Asset Register
+[ ] Background IP / Foreground IP Register
+[ ] Source & License Registry
+[ ] AI Usage Register
+[ ] Third-party Permission Archive
+Kỹ thuật
+[ ] Software Architecture Document
+[ ] Git Repository & Contribution History
+[ ] SBOM
+[ ] Dependency License Report
+[ ] Security & Privacy Review
+[ ] Release & Version History
+UI/UX
+[ ] Design System & Figma History
+[ ] UI Asset License Register
+[ ] Accessibility Review
+[ ] AI Content Attribution & Source Policy
+[ ] Privacy & Transparency UX
+Kiểm chứng
+[ ] Prototype Testing Report
+[ ] Usability Evaluation
+[ ] AI Answer Quality Evaluation
+[ ] Pilot Evaluation Report
+[ ] Risk Register
+[ ] Product Roadmap
+Phụ lục B --- Mẫu thông tin tối thiểu cho một tài sản
+Asset ID:Asset Name:Asset Type:Creator / Author:Rights Owner:Source:Creation Date:Version:License:Allowed Use:Commercial Use:Modification Rights:Attribution Requirement:Evidence / Permission Document:Project Usage:Review Date:Status: Approved / Pending / Rejected
+Phụ lục C --- Mẫu hồ sơ nguồn tri thức
+Document ID:Document Title:Author / Issuing Organization:Official Source:Publication Date:Version:Effective Status:License / Usage Conditions:Permitted Purpose:Relevant Pages / Sections:Reviewer:Last Verified:Status: Approved / Pending / Rejected
+------------------------------------------------------------------------
+Kết thúc tài liệu --- STUDYFLOW AI Research & Product Blueprint v1.0
