@@ -12,6 +12,7 @@ import {
   Flame,
   GraduationCap,
   HelpCircle,
+  KeyRound,
   Layers,
   Search,
   Sparkles,
@@ -27,6 +28,7 @@ interface PKSubjectSelectionScreenProps {
   onBack?: () => void;
   initialSubjectId?: string;
   initialSearchQuery?: string;
+  onOpenJoinCode?: () => void;
 }
 
 export function PKSubjectSelectionScreen({
@@ -34,6 +36,7 @@ export function PKSubjectSelectionScreen({
   onBack,
   initialSubjectId,
   initialSearchQuery,
+  onOpenJoinCode,
 }: PKSubjectSelectionScreenProps) {
   const router = useRouter();
 
@@ -130,13 +133,26 @@ export function PKSubjectSelectionScreen({
           </Link>
         </div>
 
-        {/* STEP PROGRESS INDICATOR */}
+        {/* STEP PROGRESS INDICATOR & QUICK JOIN */}
         <div className="flex items-center gap-2 sm:gap-3 text-xs">
+          {onOpenJoinCode && (
+            <button
+              type="button"
+              onClick={onOpenJoinCode}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-[#EDE9FE] text-[#7C3AED] border border-[#7C3AED]/30 font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+              title="Nhập mã phòng bạn bè chia sẻ"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Nhập mã phòng</span>
+              <span className="sm:hidden">Mã phòng</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#EDE9FE] text-[#7C3AED] font-black border border-[#7C3AED]/20 shadow-xs">
             <span className="w-5 h-5 rounded-full bg-[#7C3AED] text-white text-[11px] flex items-center justify-center">
               1
             </span>
-            <span className="font-bold">Bước 1: Chọn môn học</span>
+            <span className="font-bold">Bước 1: Chọn môn</span>
           </div>
 
           <div className="w-4 h-0.5 bg-[#E8E4F3] hidden sm:block" />

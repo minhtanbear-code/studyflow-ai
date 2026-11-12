@@ -12,6 +12,7 @@ import {
   Flame,
   Headphones,
   Info,
+  KeyRound,
   Mic,
   Radio,
   Sparkles,
@@ -28,12 +29,14 @@ interface PKFriendModeSelectionScreenProps {
   subject: PKSubject;
   onBack: () => void;
   onSelectFriendMode?: (mode: "competition" | "voice") => void;
+  onOpenJoinCode?: () => void;
 }
 
 export function PKFriendModeSelectionScreen({
   subject,
   onBack,
   onSelectFriendMode,
+  onOpenJoinCode,
 }: PKFriendModeSelectionScreenProps) {
   const [selectedSubMode, setSelectedSubMode] = useState<"competition" | "voice" | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -145,7 +148,7 @@ export function PKFriendModeSelectionScreen({
         </div>
 
         {/* HERO TITLE & SUPPORTING DESCRIPTION */}
-        <div className="text-center max-w-2xl mx-auto space-y-3 mb-10 animate-in fade-in slide-in-from-top-3 duration-300 delay-75">
+        <div className="text-center max-w-2xl mx-auto space-y-3 mb-8 animate-in fade-in slide-in-from-top-3 duration-300 delay-75">
           <h1 className="text-3xl sm:text-4xl font-black text-[#17133B] tracking-tight">
             Bạn muốn chọn chế độ nào?
           </h1>
@@ -154,6 +157,38 @@ export function PKFriendModeSelectionScreen({
             Chọn cách ôn tập phù hợp để học hiệu quả và thú vị hơn cùng bạn bè.
           </p>
         </div>
+
+        {/* JOIN BY CODE PROMINENT BANNER */}
+        {onOpenJoinCode && (
+          <div className="max-w-3xl mx-auto w-full mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-gradient-to-r from-purple-50/80 via-white to-indigo-50/80 rounded-2xl p-4 sm:p-5 border-2 border-dashed border-[#7C3AED]/30 hover:border-[#7C3AED] transition-all flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs hover:shadow-md">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#EDE9FE] text-[#7C3AED] flex items-center justify-center shrink-0 shadow-inner">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-black text-[#17133B] flex items-center gap-2">
+                    <span>Bạn đã có mã phòng từ bạn bè?</span>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#EDE9FE] text-[#7C3AED]">
+                      Vào nhanh
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#77738F] font-medium mt-0.5">
+                    Nhập mã (VD: <code className="font-mono font-bold text-[#7C3AED]">VH-1024</code>) để vào ngay phòng học hoặc thi đấu
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenJoinCode}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-xs shadow-md shadow-purple-200 active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Nhập mã phòng</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* TWO STUDY MODE CARDS (Arranged horizontally on desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 max-w-4xl mx-auto w-full">
