@@ -30,6 +30,9 @@ yarn-error.log*
 *.exe
 *.zip
 *.log
+*.bat
+code_de_up_github/
+StudyFlowAI_SourceCode.zip
 
 # typescript
 *.tsbuildinfo
