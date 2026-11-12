@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PKSubjectSelectionScreen } from "@/components/pk/PKSubjectSelectionScreen";
 import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelectionScreen";
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
@@ -111,6 +111,17 @@ export default function PKPage() {
     return false;
   };
 
+  // Tự động nhận diện link mời qua URL (?room=VH-1024 hoặc ?code=VH-1024)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get("room") || params.get("code");
+      if (roomParam) {
+        handleJoinCode(roomParam);
+      }
+    }
+  }, []);
+
   return (
     <>
       <PKJoinCodeModal
@@ -122,7 +133,11 @@ export default function PKPage() {
       {step === "voice_learning" && selectedSubject && (
         <PKVoiceLearningContainer
           subject={selectedSubject}
-          onLeave={() => setStep("friend_mode")}
+          initialJoinedRoom={joinedRoomData}
+          onLeave={() => {
+            setJoinedRoomData(null);
+            setStep("friend_mode");
+          }}
         />
       )}
 

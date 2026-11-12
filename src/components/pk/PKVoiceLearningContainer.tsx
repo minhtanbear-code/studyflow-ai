@@ -1,25 +1,29 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { PKSubject } from "@/core/domain/pk.types";
 import { PKQuizConfigurationScreen, QuizConfigData } from "./PKQuizConfigurationScreen";
 import { PKVoiceRoomSetup } from "./PKVoiceRoomSetup";
 import { PKActiveVoiceQuiz } from "./PKActiveVoiceQuiz";
+import { RoomDetails } from "./PKJoinCodeModal";
 
 interface PKVoiceLearningContainerProps {
   subject: PKSubject;
   onLeave: () => void;
+  initialJoinedRoom?: RoomDetails | null;
 }
 
-export function PKVoiceLearningContainer({ subject, onLeave }: PKVoiceLearningContainerProps) {
+export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }: PKVoiceLearningContainerProps) {
   // Navigation step inside Voice Learning: "config" (Step 1) | "invitation" (Step 2) | "active" (Step 3)
-  const [containerStep, setContainerStep] = useState<"config" | "invitation" | "active">("config");
+  const [containerStep, setContainerStep] = useState<"config" | "invitation" | "active">(
+    initialJoinedRoom ? "active" : "config"
+  );
 
   // Preserved quiz configuration from Step 1
   const [quizConfig, setQuizConfig] = useState<QuizConfigData>({
-    questionCount: 10,
+    questionCount: initialJoinedRoom?.questionCount || 10,
     isCustomCount: false,
-    difficulty: "medium",
+    difficulty: (initialJoinedRoom?.difficulty as any) || "medium",
     questionTypes: ["single_choice"],
     includeImages: true,
   });
@@ -29,7 +33,37 @@ export function PKVoiceLearningContainer({ subject, onLeave }: PKVoiceLearningCo
     roomCode: string;
     friendName: string;
     friendAvatar: string;
-  } | null>(null);
+  } | null>(() => {
+    if (initialJoinedRoom) {
+      return {
+        roomName: initialJoinedRoom.roomName,
+        roomCode: initialJoinedRoom.roomCode,
+        friendName: initialJoinedRoom.hostName || "Chủ phòng",
+        friendAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      };
+    }
+    return null;
+  });
+
+  // Đồng bộ khi có phòng mới được gia nhập qua mã hoặc URL
+  useEffect(() => {
+    if (initialJoinedRoom) {
+      setActiveSession({
+        roomName: initialJoinedRoom.roomName,
+        roomCode: initialJoinedRoom.roomCode,
+        friendName: initialJoinedRoom.hostName || "Chủ phòng",
+        friendAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      });
+      if (initialJoinedRoom.questionCount) {
+        setQuizConfig((prev) => ({
+          ...prev,
+          questionCount: initialJoinedRoom.questionCount || prev.questionCount,
+          difficulty: (initialJoinedRoom.difficulty as any) || prev.difficulty,
+        }));
+      }
+      setContainerStep("active");
+    }
+  }, [initialJoinedRoom]);
 
   // STEP 1: Quiz Configuration Screen
   if (containerStep === "config") {
@@ -57,7 +91,11 @@ export function PKVoiceLearningContainer({ subject, onLeave }: PKVoiceLearningCo
         config={quizConfig}
         onLeave={() => {
           setActiveSession(null);
-          setContainerStep("invitation");
+          if (initialJoinedRoom) {
+            onLeave();
+          } else {
+            setContainerStep("invitation");
+          }
         }}
       />
     );
