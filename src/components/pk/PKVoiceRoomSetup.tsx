@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { PKSubject } from "@/core/domain/pk.types";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
+import { supabaseService } from "@/core/services/supabaseClient";
 
 interface PKVoiceRoomSetupProps {
   subject: PKSubject;
@@ -106,6 +107,17 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
   const handleCreateRoom = () => {
     setSetupStep("waiting");
     setFriendDeclinedMsg(null);
+
+    // Lưu thông tin phòng thực tế lên Database Supabase để bạn bè nhập mã là tìm thấy ngay
+    supabaseService.createPKRoom({
+      room_code: roomCode,
+      room_name: roomName,
+      subject_id: subject.id,
+      host_name: "Chủ phòng (Bạn)",
+      question_count: config?.questionCount || 10,
+      difficulty: config?.difficulty || "medium",
+      include_images: config?.includeImages ?? true,
+    });
   };
 
   // Simulate friend joining after invitation

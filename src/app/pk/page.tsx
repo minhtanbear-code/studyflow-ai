@@ -6,6 +6,7 @@ import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelection
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
 import { PKVoiceLearningContainer } from "@/components/pk/PKVoiceLearningContainer";
 import { PKJoinCodeModal, RoomDetails } from "@/components/pk/PKJoinCodeModal";
+import { supabaseService } from "@/core/services/supabaseClient";
 import { MOCK_PK_SUBJECTS } from "@/core/data/mockPkData";
 import { PKSubject } from "@/core/domain/pk.types";
 
@@ -19,11 +20,42 @@ export default function PKPage() {
   const [joinedRoomData, setJoinedRoomData] = useState<RoomDetails | null>(null);
 
   const handleJoinCode = async (code: string): Promise<boolean> => {
-    // Basic verification in Step 1
     const clean = code.trim().toUpperCase();
     if (!clean) return false;
 
-    // Supported sample codes
+    // 1. Tra cứu trực tiếp trên Database Supabase PostgreSQL
+    try {
+      const remoteRoom = await supabaseService.getPKRoomByCode(clean);
+      if (remoteRoom) {
+        // Cập nhật trạng thái người tham gia lên Supabase
+        await supabaseService.joinPKRoom(remoteRoom.room_code, "Bạn đồng hành");
+
+        const matchedSubject =
+          MOCK_PK_SUBJECTS.find((s) => s.id === remoteRoom.subject_id) ||
+          MOCK_PK_SUBJECTS.find((s) => s.name.toLowerCase().includes(remoteRoom.subject_id.toLowerCase())) ||
+          selectedSubject;
+
+        setSelectedSubject(matchedSubject);
+
+        setJoinedRoomData({
+          roomCode: remoteRoom.room_code,
+          roomName: remoteRoom.room_name,
+          subjectId: remoteRoom.subject_id,
+          subjectName: matchedSubject.name,
+          hostName: remoteRoom.host_name,
+          questionCount: remoteRoom.question_count,
+          difficulty: remoteRoom.difficulty,
+          mode: "voice",
+        });
+
+        setStep("voice_learning");
+        return true;
+      }
+    } catch (e) {
+      console.warn("Supabase lookup error, fallback to local mocks:", e);
+    }
+
+    // 2. Tra cứu mã mẫu dự phòng khi offline
     const sampleCodes: Record<string, RoomDetails> = {
       "VH-1024": {
         roomCode: "VH-1024",
