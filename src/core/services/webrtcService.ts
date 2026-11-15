@@ -2,7 +2,7 @@
 // STUDYFLOW AI - REAL WEBRTC VOICE 1V1 STREAMING SERVICE
 // ==============================================================================
 // Kết nối âm thanh ngang hàng (P2P) giữa 2 thiết bị độc lập.
-// Sử dụng STUN servers của Google + Mozilla và Supabase REST làm kênh Signaling.
+// Sử dụng STUN của Google & Mozilla + TURN relay để vượt qua tường lửa NAT/4G.
 // ==============================================================================
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zvnmnbhoywksqhjjifff.supabase.co";
@@ -16,6 +16,8 @@ const RTC_CONFIG: RTCConfiguration = {
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
     { urls: "stun:stun.services.mozilla.com" },
+    // Public WebRTC STUN/TURN relays to punch through 4G CGNAT and campus firewalls
+    { urls: "stun:stun.relay.metered.ca:80" },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -27,7 +29,9 @@ export class WebRTCVoiceManager {
   private audioElement: HTMLAudioElement | null = null;
   private isHost: boolean = false;
   private roomCode: string = "";
-  private senderId: string = "";
+  private role: "host" | "guest" = "host";
+  private mySenderId: string = "";
+  private targetSenderId: string = "";
   private signalInterval: NodeJS.Timeout | null = null;
   private isClosed: boolean = false;
 
@@ -44,10 +48,15 @@ export class WebRTCVoiceManager {
   public onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
   public onError?: (err: string) => void;
 
-  constructor(roomCode: string, senderId: string, isHost: boolean) {
+  constructor(roomCode: string, _senderId: string, isHost: boolean) {
     this.roomCode = roomCode.trim().toUpperCase();
-    this.senderId = senderId;
     this.isHost = isHost;
+    this.role = isHost ? "host" : "guest";
+    // Phân vai trò rõ ràng: Host gửi với ID bắt đầu bằng host_, Guest gửi với ID guest_
+    // Đảm bảo không bao giờ bị trùng lặp ID kể cả khi test trên cùng một máy 2 tab
+    const randomHex = Math.random().toString(36).slice(2, 8);
+    this.mySenderId = `${this.role}_${randomHex}`;
+    this.targetSenderId = isHost ? "guest" : "host";
   }
 
   /**
@@ -60,7 +69,7 @@ export class WebRTCVoiceManager {
     }
 
     try {
-      // 1. Xin quyền Microphone thực tế (1 lần duy nhất cho toàn bộ app)
+      // 1. Xin quyền Microphone thực tế với cấu hình tối ưu đàm thoại học tập
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -69,7 +78,7 @@ export class WebRTCVoiceManager {
         },
       });
 
-      // 2. Tạo phần tử Audio gắn trực tiếp vào DOM để vượt qua chính sách Autoplay
+      // 2. Tạo hoặc lấy phần tử Audio gắn trực tiếp vào DOM
       let audioEl = document.getElementById("studyflow-remote-audio") as HTMLAudioElement | null;
       if (!audioEl) {
         audioEl = document.createElement("audio");
@@ -79,9 +88,11 @@ export class WebRTCVoiceManager {
         audioEl.style.display = "none";
         document.body.appendChild(audioEl);
       }
+      audioEl.muted = false;
+      audioEl.volume = 1.0;
       this.audioElement = audioEl;
 
-      // 3. Khởi tạo RTCPeerConnection với STUN đa điểm
+      // 3. Khởi tạo RTCPeerConnection
       this.peerConnection = new RTCPeerConnection(RTC_CONFIG);
 
       // Thêm các audio track cục bộ vào kết nối
@@ -100,10 +111,12 @@ export class WebRTCVoiceManager {
           this.remoteStream = event.streams[0];
           if (this.audioElement) {
             this.audioElement.srcObject = this.remoteStream;
+            this.audioElement.muted = false;
+            this.audioElement.volume = 1.0;
             const playPromise = this.audioElement.play();
             if (playPromise !== undefined) {
               playPromise.catch(() => {
-                // Nếu trình duyệt chặn Autoplay, tự động phát ngay khi người dùng chạm/click vào trang
+                // Tự động mở khóa âm thanh khi người dùng tương tác màn hình
                 const unlock = () => {
                   this.audioElement?.play().catch(() => {});
                   document.removeEventListener("click", unlock);
@@ -121,39 +134,36 @@ export class WebRTCVoiceManager {
       // Lắng nghe trạng thái kết nối
       this.peerConnection.onconnectionstatechange = () => {
         if (this.peerConnection) {
-          this.onConnectionStateChange?.(this.peerConnection.connectionState);
+          const state = this.peerConnection.connectionState;
+          this.onConnectionStateChange?.(state);
         }
       };
 
       // Gửi ICE Candidates lên Supabase Signaling
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate && event.candidate.candidate) {
-          this.sendSignal("candidate", event.candidate.toJSON());
+          const candJson = {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+          };
+          this.sendSignal("candidate", candJson);
         }
       };
 
-      // 4. Nếu là Host: Dọn dẹp các tín hiệu WebRTC cũ của phòng này rồi tạo Offer
+      // 4. Nếu là Host: Tạo Offer đầu tiên
       if (this.isHost) {
-        // Xóa tín hiệu gọi cũ nếu có
-        await fetch(
-          `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(this.roomCode)}&type=in.(offer,answer,candidate)`,
-          {
-            method: "DELETE",
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-          }
-        ).catch(() => {});
-
         const offer = await this.peerConnection.createOffer({
           offerToReceiveAudio: true,
         });
         await this.peerConnection.setLocalDescription(offer);
-        await this.sendSignal("offer", offer);
+        await this.sendSignal("offer", {
+          type: offer.type,
+          sdp: offer.sdp,
+        });
       }
 
-      // 5. Bắt đầu lắng nghe tín hiệu Signaling chu kỳ nhanh (500ms) để kết nối tức thì
+      // 5. Bắt đầu lắng nghe tín hiệu Signaling chu kỳ 500ms
       this.startSignalPolling();
 
       return true;
@@ -185,7 +195,7 @@ export class WebRTCVoiceManager {
   }
 
   /**
-   * Mở khóa âm thanh nếu trình duyệt hạn chế autoplay
+   * Mở khóa âm thanh nếu trình duyệt chặn autoplay
    */
   unlockAudio(): void {
     if (this.audioElement && this.audioElement.paused) {
@@ -197,7 +207,7 @@ export class WebRTCVoiceManager {
   }
 
   /**
-   * Xử lý thêm ICE Candidate an toàn (buffer lại nếu remoteDescription chưa sẵn sàng)
+   * Thêm ICE Candidate an toàn
    */
   private async addCandidate(candidate: RTCIceCandidateInit): Promise<void> {
     if (!candidate || !candidate.candidate) return;
@@ -214,7 +224,7 @@ export class WebRTCVoiceManager {
   }
 
   /**
-   * Đẩy toàn bộ các ICE Candidate đã buffer vào kết nối sau khi setRemoteDescription
+   * Đẩy toàn bộ các ICE Candidate đã buffer vào kết nối
    */
   private async flushCandidates(): Promise<void> {
     if (!this.peerConnection?.remoteDescription) return;
@@ -318,7 +328,7 @@ export class WebRTCVoiceManager {
         },
         body: JSON.stringify({
           room_code: this.roomCode,
-          sender_id: this.senderId,
+          sender_id: this.mySenderId,
           type: type,
           payload: payload,
         }),
@@ -327,7 +337,7 @@ export class WebRTCVoiceManager {
   }
 
   /**
-   * Lắng nghe tín hiệu từ thiết bị đối tác qua Supabase Signaling
+   * Lắng nghe tín hiệu từ đối tác qua Supabase Signaling
    */
   private startSignalPolling(): void {
     const processedSignalIds = new Set<string>();
@@ -336,8 +346,9 @@ export class WebRTCVoiceManager {
       if (this.isClosed || !this.peerConnection) return;
 
       try {
+        // Lấy các tín hiệu gửi từ vai trò đối tác (Host tìm Guest, Guest tìm Host)
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(this.roomCode)}&sender_id=neq.${encodeURIComponent(this.senderId)}&type=in.(offer,answer,candidate)&order=created_at.asc`,
+          `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(this.roomCode)}&sender_id=like.${encodeURIComponent(this.targetSenderId)}*&type=in.(offer,answer,candidate)&order=created_at.asc`,
           {
             headers: {
               apikey: SUPABASE_ANON_KEY,
@@ -355,20 +366,23 @@ export class WebRTCVoiceManager {
           processedSignalIds.add(sig.id);
 
           if (sig.type === "offer" && !this.isHost) {
-            // Guest nhận Offer -> thiết lập remote description -> tạo Answer
+            // Guest nhận Offer từ Host -> setRemoteDescription -> tạo Answer gửi lại
             try {
               if (this.peerConnection.signalingState === "stable" || !this.peerConnection.remoteDescription) {
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sig.payload));
                 await this.flushCandidates();
                 const answer = await this.peerConnection.createAnswer();
                 await this.peerConnection.setLocalDescription(answer);
-                await this.sendSignal("answer", answer);
+                await this.sendSignal("answer", {
+                  type: answer.type,
+                  sdp: answer.sdp,
+                });
               }
             } catch (err) {
               console.warn("Guest handle offer error:", err);
             }
           } else if (sig.type === "answer" && this.isHost) {
-            // Host nhận Answer -> thiết lập remote description
+            // Host nhận Answer từ Guest -> setRemoteDescription
             try {
               if (this.peerConnection.signalingState === "have-local-offer") {
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sig.payload));
@@ -378,12 +392,12 @@ export class WebRTCVoiceManager {
               console.warn("Host handle answer error:", err);
             }
           } else if (sig.type === "candidate") {
-            // Nhận ICE Candidate và thêm vào kết nối
+            // Nhận ICE Candidate
             await this.addCandidate(sig.payload);
           }
         }
       } catch (e) {}
-    }, 500); // Polling 500ms giúp bắt tay WebRTC hoàn tất trong 1-2 giây
+    }, 500);
   }
 
   /**
