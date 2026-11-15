@@ -143,6 +143,10 @@ export function PKActiveVoiceQuiz({
     const manager = new WebRTCVoiceManager(roomCode, currentUser.id, isHost);
     webrtcManagerRef.current = manager;
 
+    manager.onLocalSpeaking = (volume) => {
+      setUserIsSpeaking(volume > 15);
+    };
+
     manager.onRemoteSpeaking = (volume) => {
       setPeerIsSpeaking(volume > 15);
     };
@@ -150,7 +154,7 @@ export function PKActiveVoiceQuiz({
     manager.onConnectionStateChange = (state) => {
       if (state === "connected") {
         setVoiceConnectionState("connected");
-      } else if (state === "connecting") {
+      } else if (state === "connecting" || state === "new") {
         setVoiceConnectionState("connecting");
       } else {
         setVoiceConnectionState("reconnecting");
@@ -161,10 +165,6 @@ export function PKActiveVoiceQuiz({
 
     // Lắng nghe trạng thái micro và phòng từ bạn học
     const unsub = voiceRealtimeService.subscribeToRoom(roomCode, (room) => {
-      const pMic = isHost ? room.guest_mic : room.host_mic;
-      if (pMic !== undefined) {
-        setFriendMicOn(pMic);
-      }
       if (room.status === "closed") {
         setPartnerLeft(true);
       }
@@ -280,77 +280,22 @@ export function PKActiveVoiceQuiz({
     }
   }, [currentQIndex, currentQ]);
 
-  // Real Microphone Capture Effect
-  useEffect(() => {
-    let active = true;
-
-    async function initMicrophone() {
-      if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (!active) return;
-        micStreamRef.current = stream;
-
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioCtx();
-        audioContextRef.current = ctx;
-
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        const detectVoice = () => {
-          if (!active) return;
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const avg = sum / dataArray.length;
-
-          if (isMicOn && avg > 16) {
-            setUserIsSpeaking(true);
-          } else {
-            setUserIsSpeaking(false);
-          }
-
-          animFrameRef.current = requestAnimationFrame(detectVoice);
-        };
-
-        detectVoice();
-      } catch (err) {
-        // Fallback gracefully without throwing
-      }
-    }
-
-    initMicrophone();
-
-    return () => {
-      active = false;
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-        audioContextRef.current.close();
-      }
-    };
-  }, [isMicOn]);
-
   const handleToggleMic = () => {
     const next = !isMicOn;
     setIsMicOn(next);
-    if (micStreamRef.current) {
-      micStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = next));
-    }
     webrtcManagerRef.current?.setMicEnabled(next);
     voiceRealtimeService.updateMicState(roomCode, isHost, next);
   };
 
+  const handleToggleSpeaker = () => {
+    const next = !isSpeakerOn;
+    setIsSpeakerOn(next);
+    webrtcManagerRef.current?.setSpeakerEnabled(next);
+    webrtcManagerRef.current?.unlockAudio();
+  };
+
   const handleSelectOption = (idx: number) => {
+    webrtcManagerRef.current?.unlockAudio();
     if (userSubmitted) return;
     setUserSelectedOption(idx);
     if (isRealPeer) {
@@ -506,7 +451,7 @@ export function PKActiveVoiceQuiz({
           {/* Speaker Toggle */}
           <button
             type="button"
-            onClick={() => setIsSpeakerOn(!isSpeakerOn)}
+            onClick={handleToggleSpeaker}
             className={`p-2 rounded-xl border text-xs font-bold transition-all shadow-xs ${
               isSpeakerOn
                 ? "bg-white text-slate-700 border-[#E8E4F3] hover:border-[#7C3AED]"
@@ -1007,7 +952,7 @@ export function PKActiveVoiceQuiz({
 
               <button
                 type="button"
-                onClick={() => setIsSpeakerOn(!isSpeakerOn)}
+                onClick={handleToggleSpeaker}
                 className={`p-3 rounded-2xl border text-xs font-black flex flex-col items-center justify-center gap-1.5 transition-all ${
                   isSpeakerOn
                     ? "bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100"
