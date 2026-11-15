@@ -26,6 +26,8 @@ import { PKSubject } from "@/core/domain/pk.types";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
 import { userService, StudentProfile } from "@/core/services/userService";
 import { voiceRealtimeService, RealtimeVoiceRoom } from "@/core/services/voiceRealtimeService";
+import { PKUsernameRequiredModal } from "@/components/profile/PKUsernameRequiredModal";
+import { createClient } from "@/core/supabase/client";
 
 interface PKVoiceRoomSetupProps {
   subject: PKSubject;
@@ -55,9 +57,57 @@ export function PKVoiceRoomSetup({
   // Current user identity
   const [currentUser, setCurrentUser] = useState<StudentProfile>(() => userService.getCurrentUser());
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [hasCustomUsername, setHasCustomUsername] = useState(false);
   const [editName, setEditName] = useState(currentUser.fullName);
   const [editUniversity, setEditUniversity] = useState(currentUser.university);
   const [editMajor, setEditMajor] = useState(currentUser.major);
+
+  // Đồng bộ thông tin xác thực từ Supabase và kiểm tra trạng thái username
+  useEffect(() => {
+    async function checkAuthProfile() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (profile) {
+            setHasCustomUsername(!!profile.username);
+            const updatedProfile = {
+              ...currentUser,
+              id: user.id,
+              username: profile.username || currentUser.username,
+              fullName: profile.full_name || currentUser.fullName,
+              avatar: profile.avatar_url || currentUser.avatar,
+              university: profile.university || currentUser.university,
+              major: profile.major || currentUser.major,
+            };
+            setCurrentUser(updatedProfile);
+            setEditName(updatedProfile.fullName);
+            setEditUniversity(updatedProfile.university);
+            setEditMajor(updatedProfile.major);
+          }
+        }
+      } catch (err) {
+        console.warn("Lỗi kiểm tra auth trong PKVoiceRoomSetup:", err);
+      }
+    }
+    checkAuthProfile();
+  }, []);
+
+  // Mở modal tìm bạn bè: Bắt buộc đã thiết lập username trước
+  const handleOpenFriendModal = () => {
+    if (!hasCustomUsername && (!currentUser.username || currentUser.username.startsWith("student_"))) {
+      setShowUsernameModal(true);
+      return;
+    }
+    setShowFriendModal(true);
+  };
 
   // Setup steps: "config" | "waiting" | "friend_reviewing" | "ready"
   const [setupStep, setSetupStep] = useState<"config" | "waiting" | "friend_reviewing" | "ready">(
@@ -481,7 +531,7 @@ export function PKVoiceRoomSetup({
 
                 {/* Method 3: Friend Directory */}
                 <div
-                  onClick={() => setShowFriendModal(true)}
+                  onClick={handleOpenFriendModal}
                   className="p-3.5 rounded-2xl border-2 border-[#7C3AED]/40 bg-[#FAF8FF] hover:border-[#7C3AED] cursor-pointer transition-all space-y-1.5 group shadow-xs"
                 >
                   <div className="w-8 h-8 rounded-xl bg-[#EDE9FE] text-[#7C3AED] flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -565,7 +615,7 @@ export function PKVoiceRoomSetup({
                   </span>
                 </div>
                 <button
-                  onClick={() => setShowFriendModal(true)}
+                  onClick={handleOpenFriendModal}
                   className="px-3 py-1 rounded-xl bg-white text-[#7C3AED] font-bold text-[11px] border border-[#EDE9FE] hover:bg-[#EDE9FE] cursor-pointer"
                 >
                   Mời từ danh bạ
@@ -936,6 +986,18 @@ export function PKVoiceRoomSetup({
           </div>
         </div>
       )}
+
+      {/* YÊU CẦU THIẾT LẬP USERNAME TRƯỚC KHI TÌM BẠN BÈ (PROGRESSIVE PROFILING) */}
+      <PKUsernameRequiredModal
+        isOpen={showUsernameModal}
+        onClose={() => setShowUsernameModal(false)}
+        onSuccess={(newUsername) => {
+          setHasCustomUsername(true);
+          setCurrentUser((prev) => ({ ...prev, username: newUsername }));
+          setShowUsernameModal(false);
+          setShowFriendModal(true);
+        }}
+      />
     </div>
   );
 }

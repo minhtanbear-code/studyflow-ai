@@ -75,9 +75,50 @@ import { GradeCalculatorTab } from "@/components/mobile/GradeCalculatorTab";
 import { EarlyWarningTab } from "@/components/mobile/EarlyWarningTab";
 import { RoadmapTab } from "@/components/mobile/RoadmapTab";
 import { analyzeStudentEarlyWarning, UNIVERSITY_PRESETS } from "@/core/services/academicCalculator.service";
+import { createClient } from "@/core/supabase/client";
 
 export function SchoolGenZDashboard() {
   const router = useRouter();
+
+  // Auth User State
+  const [authUser, setAuthUser] = useState<{
+    id: string;
+    email: string;
+    name: string;
+    avatar: string;
+    username?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    async function loadAuth() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          const name = profileData?.full_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Sinh viên";
+          const avatar = profileData?.avatar_url || user.user_metadata?.avatar_url || name.slice(0, 2).toUpperCase();
+          const username = profileData?.username;
+
+          setAuthUser({
+            id: user.id,
+            email: user.email || "",
+            name,
+            avatar,
+            username,
+          });
+        }
+      } catch (err) {
+        console.warn("Error loading auth in dashboard:", err);
+      }
+    }
+    loadAuth();
+  }, []);
 
   // Navigation & View State
   const [activeNav, setActiveNav] = useState<
@@ -359,17 +400,27 @@ export function SchoolGenZDashboard() {
             </button>
 
             {/* User Profile Avatar Pill */}
-            <div className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 px-2 py-1 rounded-full cursor-pointer transition-colors">
-              <div className="w-7 h-7 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center text-slate-900 font-black text-xs shadow-sm">
-                ĐL
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 px-2 py-1 rounded-full cursor-pointer transition-colors group"
+              title="Xem hồ sơ cá nhân và cài đặt tài khoản"
+            >
+              <div className="w-7 h-7 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center text-slate-900 font-black text-xs shadow-sm overflow-hidden">
+                {authUser?.avatar && authUser.avatar.startsWith("http") ? (
+                  <img src={authUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span>{authUser?.avatar || "ĐL"}</span>
+                )}
               </div>
               <div className="hidden sm:block text-left pr-1 leading-none">
-                <div className="text-xs font-black text-white">Đô La</div>
+                <div className="text-xs font-black text-white group-hover:text-amber-200 transition-colors">
+                  {authUser?.name || "Đô La"}
+                </div>
                 <div className="text-[10px] text-blue-100 font-medium mt-0.5">
-                  Lớp 5 • Lv 1 • Gà con
+                  {authUser?.username ? `@${authUser.username}` : "Lớp 5 • Lv 1 • Gà con"}
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </header>
@@ -604,9 +655,11 @@ export function SchoolGenZDashboard() {
                   </div>
                 </div>
 
-                {/* Floating "Chào Đô La!" Card (Exactly as in screenshot) */}
+                {/* Floating "Chào Đô La!" Card (Dynamically shows student name) */}
                 <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm rounded-2xl p-3.5 border-2 border-slate-100 shadow-xl space-y-2.5 z-20">
-                  <h3 className="text-base font-black text-slate-900">Chào Đô La!</h3>
+                  <h3 className="text-base font-black text-slate-900">
+                    Chào {authUser?.name ? authUser.name.split(" ").slice(-1)[0] : "Đô La"}!
+                  </h3>
 
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
