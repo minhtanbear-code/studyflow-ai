@@ -18,7 +18,10 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(() => {
-    if (callbackError) return "Đăng nhập OAuth thất bại hoặc bị hủy. Vui lòng thử lại.";
+    if (callbackError) {
+      if (callbackError === "auth_callback_failed") return "Đăng nhập OAuth thất bại hoặc bị hủy. Vui lòng thử lại.";
+      return `Lỗi OAuth: ${callbackError}`;
+    }
     return null;
   });
 
