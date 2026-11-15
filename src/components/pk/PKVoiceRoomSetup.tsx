@@ -1,75 +1,105 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import {
-  AlertCircle,
   ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
   Copy,
-  Flame,
   Globe,
   Key,
   Mic,
-  MicOff,
   Radio,
-  Search,
   Share2,
-  Shield,
   Sparkles,
-  UserCheck,
-  UserPlus,
   Users,
   X,
+  Shield,
+  Search,
+  UserCheck,
+  AlertCircle,
+  Edit2,
+  GraduationCap,
 } from "lucide-react";
 import { PKSubject } from "@/core/domain/pk.types";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
-import { supabaseService } from "@/core/services/supabaseClient";
+import { userService, StudentProfile } from "@/core/services/userService";
+import { voiceRealtimeService, RealtimeVoiceRoom } from "@/core/services/voiceRealtimeService";
 
 interface PKVoiceRoomSetupProps {
   subject: PKSubject;
   config?: QuizConfigData;
+  initialRoomCode?: string;
+  isGuest?: boolean;
+  initialHostName?: string;
   onBack: () => void;
   onStartSession: (roomData: {
     roomName: string;
     roomCode: string;
     friendName: string;
     friendAvatar: string;
+    isHost: boolean;
   }) => void;
 }
 
-export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PKVoiceRoomSetupProps) {
+export function PKVoiceRoomSetup({
+  subject,
+  config,
+  initialRoomCode,
+  isGuest = false,
+  initialHostName,
+  onBack,
+  onStartSession,
+}: PKVoiceRoomSetupProps) {
+  // Current user identity
+  const [currentUser, setCurrentUser] = useState<StudentProfile>(() => userService.getCurrentUser());
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editName, setEditName] = useState(currentUser.fullName);
+  const [editUniversity, setEditUniversity] = useState(currentUser.university);
+  const [editMajor, setEditMajor] = useState(currentUser.major);
+
   // Setup steps: "config" | "waiting" | "friend_reviewing" | "ready"
-  const [setupStep, setSetupStep] = useState<"config" | "waiting" | "friend_reviewing" | "ready">("config");
+  const [setupStep, setSetupStep] = useState<"config" | "waiting" | "friend_reviewing" | "ready">(
+    isGuest ? "friend_reviewing" : "config"
+  );
 
   // Readied status for both players before starting
   const [hostReady, setHostReady] = useState(true);
-  const [friendReady, setFriendReady] = useState(true);
+  const [friendReady, setFriendReady] = useState(isGuest ? false : true);
   const [friendDeclinedMsg, setFriendDeclinedMsg] = useState<string | null>(null);
 
   // Room metadata
-  const [roomName, setRoomName] = useState(`Phòng Voice Ôn Thi: ${subject.name}`);
-  const [roomCode] = useState(() => "VH-" + Math.floor(1000 + Math.random() * 9000));
+  const [roomName] = useState(`Phòng Voice Ôn Thi: ${subject.name}`);
+  const [roomCode] = useState(() => initialRoomCode || "VH-" + Math.floor(1000 + Math.random() * 9000));
   const inviteUrl = typeof window !== "undefined"
     ? `${window.location.origin}/pk?room=${roomCode}`
-    : `https://studyflow.ai/pk?room=${roomCode}`;
+    : `https://studyflow-ai-git-main-tan-dcc2.vercel.app/pk?room=${roomCode}`;
 
   // Copied toast
   const [copiedType, setCopiedType] = useState<"link" | "code" | null>(null);
+  const [inviteSentMsg, setInviteSentMsg] = useState<string | null>(null);
 
-  // Friend list modal & friends
+  // Friend list modal & search
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
-  const [invitedFriendId, setInvitedFriendId] = useState<string | null>(null);
+  const [friendList, setFriendList] = useState<StudentProfile[]>(() => userService.getFriendList());
 
   // Friend joining state
   const [joinedFriend, setJoinedFriend] = useState<{
     name: string;
     avatar: string;
     major: string;
-  } | null>(null);
+  } | null>(() => {
+    if (isGuest && initialHostName) {
+      return {
+        name: initialHostName,
+        avatar: initialHostName.slice(0, 2).toUpperCase(),
+        major: "Chủ phòng (UEH)",
+      };
+    }
+    return null;
+  });
 
   const difficultyText = (d?: string) => {
     switch (d) {
@@ -80,19 +110,17 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
     }
   };
 
-  // Registered mock students for friend invitation
-  const mockFriends = [
-    { id: "f1", name: "Lê Hoàng Mai", avatar: "HM", major: "Kinh tế đối ngoại (K68)", online: true },
-    { id: "f2", name: "Trần Bảo Ngọc", avatar: "BN", major: "Tài chính ngân hàng (K67)", online: true },
-    { id: "f3", name: "Nguyễn Văn Tuấn", avatar: "VT", major: "Kinh tế quốc tế (K68)", online: true },
-    { id: "f4", name: "Lê Thu Hà", avatar: "TH", major: "Kế toán kiểm toán (K68)", online: true },
-    { id: "f5", name: "Phạm Hải Đăng", avatar: "HĐ", major: "Quản trị kinh doanh (K67)", online: false },
-  ];
-
-  const filteredFriends = mockFriends.filter((f) =>
-    f.name.toLowerCase().includes(friendSearch.toLowerCase()) ||
-    f.major.toLowerCase().includes(friendSearch.toLowerCase())
-  );
+  // Tra cứu tìm kiếm bạn bè thật theo từ khóa
+  useEffect(() => {
+    if (!showFriendModal) return;
+    let active = true;
+    userService.searchStudents(friendSearch).then((results) => {
+      if (active) setFriendList(results);
+    });
+    return () => {
+      active = false;
+    };
+  }, [friendSearch, showFriendModal]);
 
   // Copy helper
   const handleCopy = (text: string, type: "link" | "code") => {
@@ -104,66 +132,138 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
   };
 
   // Creator proceeds to Waiting Room
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     setSetupStep("waiting");
     setFriendDeclinedMsg(null);
 
-    // Lưu thông tin phòng thực tế lên Database Supabase để bạn bè nhập mã là tìm thấy ngay
-    supabaseService.createPKRoom({
+    await voiceRealtimeService.createRoom({
       room_code: roomCode,
       room_name: roomName,
       subject_id: subject.id,
-      host_name: "Chủ phòng (Bạn)",
+      host_id: currentUser.id,
+      host_name: currentUser.fullName,
+      host_avatar: currentUser.avatar,
       question_count: config?.questionCount || 10,
       difficulty: config?.difficulty || "medium",
       include_images: config?.includeImages ?? true,
     });
   };
 
-  // Simulate friend joining after invitation
-  const handleInviteFriend = (friend: typeof mockFriends[0]) => {
-    setInvitedFriendId(friend.id);
+  // Lắng nghe đồng bộ phòng thời gian thực (Supabase Realtime Sync)
+  useEffect(() => {
+    if (setupStep === "config" && !isGuest) return;
+
+    const unsubscribe = voiceRealtimeService.subscribeToRoom(roomCode, (room: RealtimeVoiceRoom) => {
+      if (!isGuest) {
+        // HOST PERSPECTIVE:
+        if (room.guest_name && (room.status === "friend_reviewing" || room.status === "ready" || room.status === "active")) {
+          setJoinedFriend({
+            name: room.guest_name,
+            avatar: room.guest_avatar || "BN",
+            major: room.guest_major || "Kinh tế",
+          });
+          if (room.status === "friend_reviewing" && setupStep === "waiting") {
+            setSetupStep("friend_reviewing");
+          } else if (room.status === "ready") {
+            setFriendReady(room.guest_ready ?? true);
+            setSetupStep("ready");
+          } else if (room.status === "active") {
+            onStartSession({
+              roomName: room.room_name,
+              roomCode: room.room_code,
+              friendName: room.guest_name,
+              friendAvatar: room.guest_avatar || "BN",
+              isHost: true,
+            });
+          }
+        }
+      } else {
+        // GUEST PERSPECTIVE:
+        if (room.host_name) {
+          setJoinedFriend({
+            name: room.host_name,
+            avatar: room.host_avatar || "DL",
+            major: "Chủ phòng",
+          });
+        }
+        if (room.status === "ready") {
+          setSetupStep("ready");
+        } else if (room.status === "active") {
+          onStartSession({
+            roomName: room.room_name,
+            roomCode: room.room_code,
+            friendName: room.host_name,
+            friendAvatar: room.host_avatar || "DL",
+            isHost: false,
+          });
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomCode, setupStep, isGuest, onStartSession]);
+
+  // Gửi lời mời trực tiếp đến người bạn trong danh bạ
+  const handleInviteFriend = async (friend: StudentProfile) => {
     setShowFriendModal(false);
     setFriendDeclinedMsg(null);
     setSetupStep("waiting");
 
-    // Realistic join delay (1.8 seconds)
-    setTimeout(() => {
-      setJoinedFriend({
-        name: friend.name,
-        avatar: friend.avatar,
-        major: friend.major,
-      });
-      // Proceed to review phase (Step 7: Invited friend reviews config)
-      setSetupStep("friend_reviewing");
-    }, 1800);
+    // Đảm bảo phòng đã được khởi tạo
+    await handleCreateRoom();
+
+    const ok = await voiceRealtimeService.sendDirectInvitation({
+      room_code: roomCode,
+      sender_id: currentUser.id,
+      sender_name: `${currentUser.fullName} (${currentUser.university})`,
+      sender_avatar: currentUser.avatar,
+      receiver_id: friend.id,
+      subject_name: subject.name,
+      question_count: config?.questionCount || 10,
+      difficulty: config?.difficulty || "medium",
+    });
+
+    setInviteSentMsg(ok ? `Đã gửi lời mời đến ${friend.fullName}!` : `Đang chờ ${friend.fullName}...`);
+    setTimeout(() => setInviteSentMsg(null), 4000);
   };
 
   // Friend accepts quiz configuration
-  const handleFriendAcceptConfig = () => {
+  const handleFriendAcceptConfig = async () => {
     setFriendReady(true);
     setSetupStep("ready");
+    await voiceRealtimeService.guestAcceptConfig(roomCode);
   };
 
   // Friend declines quiz configuration
-  const handleFriendDeclineConfig = () => {
-    setFriendDeclinedMsg(
-      `${joinedFriend?.name || "Bạn của bạn"} chưa đồng ý với cấu hình này. Bạn có thể quay lại điều chỉnh số lượng hoặc độ khó để cùng học!`
-    );
-    setJoinedFriend(null);
-    setInvitedFriendId(null);
-    setSetupStep("config");
+  const handleFriendDeclineConfig = async () => {
+    await voiceRealtimeService.guestDeclineConfig(roomCode);
+    setFriendDeclinedMsg("Bạn đã từ chối cấu hình đề thi này.");
+    onBack();
   };
 
   // Start the actual Voice Learning session
-  const handleStartActiveSession = () => {
+  const handleStartActiveSession = async () => {
     if (!joinedFriend || !hostReady || !friendReady) return;
+    await voiceRealtimeService.startActiveSession(roomCode);
     onStartSession({
       roomName,
       roomCode,
       friendName: joinedFriend.name,
       friendAvatar: joinedFriend.avatar,
+      isHost: !isGuest,
     });
+  };
+
+  // Cập nhật Profile
+  const handleSaveProfile = () => {
+    if (!editName.trim()) return;
+    const updated = userService.updateCurrentUser({
+      fullName: editName.trim(),
+      university: editUniversity.trim(),
+      major: editMajor.trim(),
+    });
+    setCurrentUser(updated);
+    setShowEditProfile(false);
   };
 
   return (
@@ -185,7 +285,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm sm:text-base font-black text-[#17133B]">
-                Tạo phòng Voice học (1 vs 1)
+                {isGuest ? "Gia nhập phòng Voice" : "Tạo phòng Voice học (1 vs 1)"}
               </span>
               <span className="text-[10px] font-extrabold text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-md hidden sm:inline">
                 {subject.code}
@@ -242,6 +342,14 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
         </div>
       )}
 
+      {/* Invite sent notification toast */}
+      {inviteSentMsg && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-[#7C3AED] text-white px-4 py-2 rounded-2xl shadow-xl font-bold text-xs flex items-center gap-2 animate-in slide-in-from-top-3">
+          <CheckCircle2 className="w-4 h-4 text-white" />
+          <span>{inviteSentMsg}</span>
+        </div>
+      )}
+
       {/* ========================================================= */}
       {/* MAIN CONTAINER                                            */}
       {/* ========================================================= */}
@@ -255,20 +363,42 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
             </div>
             <button
               onClick={onBack}
-              className="text-xs font-bold text-rose-700 underline hover:text-rose-900 shrink-0"
+              className="text-xs font-bold text-rose-700 underline hover:text-rose-900 shrink-0 cursor-pointer"
             >
               Chỉnh sửa cấu hình &rarr;
             </button>
           </div>
         )}
 
+        {/* Current User Quick-Edit Banner */}
+        <div className="mb-4 p-3 bg-white rounded-2xl border border-[#E8E4F3] flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-400 to-orange-500 text-slate-900 font-black text-xs flex items-center justify-center">
+              {currentUser.avatar}
+            </div>
+            <div>
+              <span className="font-black text-[#17133B]">{currentUser.fullName}</span>
+              <span className="text-[11px] text-[#77738F] block">
+                {currentUser.university} • {currentUser.major} ({currentUser.academicYear})
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowEditProfile(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#EDE9FE] hover:text-[#7C3AED] text-slate-600 font-bold text-[11px] transition-all cursor-pointer"
+          >
+            <Edit2 className="w-3 h-3" />
+            <span>Đổi tên / trường</span>
+          </button>
+        </div>
+
         {/* ======================================================= */}
-        {/* PHASE 1: ROOM CONFIGURATION & INVITATION SETUP          */}
+        {/* PHASE 2.1: INITIAL CONFIGURATION / CREATION             */}
         {/* ======================================================= */}
         {setupStep === "config" && (
           <div className="bg-white rounded-3xl p-6 sm:p-9 border border-[#E8E4F3] shadow-sm space-y-6 animate-in fade-in duration-200">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EDE9FE] text-[#7C3AED] text-xs font-black mb-3">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 text-[#7C3AED] text-xs font-black mb-2 border border-purple-200">
                 <Radio className="w-3.5 h-3.5 animate-pulse" />
                 <span>BƯỚC 2: MỜI BẠN THAM GIA PHÒNG HỌC</span>
               </div>
@@ -280,74 +410,39 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               </p>
             </div>
 
-            {/* Quiz Configuration Summary Card */}
-            <div className="p-4 bg-[#FAF8FF] rounded-2xl border border-[#EDE9FE] flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                <span className="text-xs font-black text-[#17133B] flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-[#7C3AED]" />
-                  <span>Bộ câu hỏi đã thiết lập:</span>
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-white border border-[#EDE9FE] text-xs font-bold text-[#7C3AED]">
-                  {config?.questionCount || 10} câu
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-white border border-[#EDE9FE] text-xs font-bold text-slate-700">
-                  Độ khó: {difficultyText(config?.difficulty)}
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-white border border-[#EDE9FE] text-xs font-bold text-slate-700">
-                  {config?.includeImages !== false ? "Kèm hình ảnh" : "Chỉ văn bản"}
-                </span>
+            {/* Quiz Configuration Summary Box */}
+            <div className="p-4 rounded-2xl bg-[#FAF8FF] border border-[#EDE9FE] space-y-3">
+              <div className="flex items-center justify-between text-xs border-b border-[#F0EDF9] pb-2.5">
+                <span className="font-bold text-[#77738F]">Cấu hình đề thi đã chọn:</span>
+                <button
+                  onClick={onBack}
+                  className="font-bold text-[#7C3AED] hover:underline cursor-pointer"
+                >
+                  Thay đổi
+                </button>
               </div>
 
-              <button
-                onClick={onBack}
-                className="text-xs font-bold text-[#7C3AED] hover:underline flex items-center gap-1"
-                title="Quay lại thay đổi số lượng, độ khó"
-              >
-                <span>Chỉnh sửa cấu hình</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Room Name Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#17133B]">Tên phòng học thoại:</label>
-              <input
-                type="text"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                className="w-full px-4 py-3 bg-[#F8F7FC] border border-[#E8E4F3] rounded-2xl text-xs sm:text-sm font-bold text-[#17133B] focus:outline-none focus:border-[#7C3AED] focus:bg-white transition-all"
-                placeholder="Nhập tên phòng học..."
-              />
-            </div>
-
-            {/* Room ID & Code Preview */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-[#FAF8FF] rounded-2xl border border-[#EDE9FE]">
-              <div>
-                <span className="text-[11px] font-bold text-[#77738F] block">Môn học áp dụng:</span>
-                <span className="text-sm font-black text-[#17133B] flex items-center gap-1.5 mt-0.5">
-                  <span>{subject.icon}</span>
-                  <span>{subject.name}</span>
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[11px] font-bold text-[#77738F] block">Mã mời tham gia (Room Code):</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-sm font-black text-[#7C3AED] tracking-wider bg-white px-2.5 py-0.5 rounded-lg border border-[#EDE9FE]">
-                    {roomCode}
-                  </span>
-                  <button
-                    onClick={() => handleCopy(roomCode, "code")}
-                    className="p-1 hover:text-[#7C3AED] transition-colors"
-                    title="Sao chép mã"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <span className="text-[#77738F] block text-[11px]">Môn học:</span>
+                  <span className="font-black text-[#17133B]">{subject.name}</span>
+                </div>
+                <div>
+                  <span className="text-[#77738F] block text-[11px]">Số lượng câu:</span>
+                  <span className="font-black text-[#7C3AED]">{config?.questionCount || 10} câu</span>
+                </div>
+                <div>
+                  <span className="text-[#77738F] block text-[11px]">Độ khó:</span>
+                  <span className="font-black text-[#17133B]">{difficultyText(config?.difficulty)}</span>
+                </div>
+                <div>
+                  <span className="text-[#77738F] block text-[11px]">Dạng đề:</span>
+                  <span className="font-bold text-[#17133B]">Trắc nghiệm chuẩn</span>
                 </div>
               </div>
             </div>
 
-            {/* 3 Invitation Methods Cards */}
+            {/* Three Invitation Methods */}
             <div className="space-y-3 pt-2">
               <label className="text-xs font-black text-[#17133B] block">
                 Chọn phương thức mời bạn cùng học:
@@ -362,10 +457,10 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                   <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
                     <Globe className="w-4 h-4" />
                   </div>
-                  <h4 className="text-xs font-black text-[#17133B]">1. Gửi Link mời</h4>
-                  <p className="text-[11px] text-[#77738F]">Sao chép link gửi qua Zalo, Messenger, Telegram.</p>
-                  <span className="text-[11px] font-bold text-[#7C3AED] block pt-1">
-                    {copiedType === "link" ? "✓ Đã chép link" : "Sao chép link &rarr;"}
+                  <h4 className="text-xs font-black text-[#17133B]">1. Sao chép Link</h4>
+                  <p className="text-[11px] text-[#77738F]">Gửi qua Zalo, Messenger, Facebook...</p>
+                  <span className="text-[11px] font-bold text-blue-600 block pt-1">
+                    Bấm sao chép &rarr;
                   </span>
                 </div>
 
@@ -380,17 +475,17 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                   <h4 className="text-xs font-black text-[#17133B]">2. Mã phòng</h4>
                   <p className="text-[11px] text-[#77738F]">Bạn bè chỉ cần nhập mã <strong>{roomCode}</strong> để vào.</p>
                   <span className="text-[11px] font-bold text-[#7C3AED] block pt-1">
-                    {copiedType === "code" ? "✓ Đã chép mã" : "Sao chép mã &rarr;"}
+                    {roomCode} (Bấm chép)
                   </span>
                 </div>
 
-                {/* Method 3: Friend List */}
+                {/* Method 3: Friend Directory */}
                 <div
                   onClick={() => setShowFriendModal(true)}
-                  className="p-3.5 rounded-2xl border border-[#7C3AED]/40 bg-[#FAF8FF] hover:border-[#7C3AED] hover:shadow-xs cursor-pointer transition-all space-y-1.5 group"
+                  className="p-3.5 rounded-2xl border-2 border-[#7C3AED]/40 bg-[#FAF8FF] hover:border-[#7C3AED] cursor-pointer transition-all space-y-1.5 group shadow-xs"
                 >
                   <div className="w-8 h-8 rounded-xl bg-[#EDE9FE] text-[#7C3AED] flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <UserPlus className="w-4 h-4" />
+                    <Users className="w-4 h-4" />
                   </div>
                   <h4 className="text-xs font-black text-[#7C3AED]">3. Danh bạ bạn học</h4>
                   <p className="text-[11px] text-[#77738F]">Mời trực tiếp sinh viên đang online trên hệ thống.</p>
@@ -401,18 +496,11 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               </div>
             </div>
 
-            {/* Action Bar */}
-            <div className="pt-4 flex items-center justify-between border-t border-[#E8E4F3]">
-              <button
-                onClick={onBack}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-[#77738F] hover:text-[#17133B]"
-              >
-                &larr; Quay lại thiết lập
-              </button>
-
+            {/* Primary Action Button */}
+            <div className="pt-4 border-t border-[#F0EDF9]">
               <button
                 onClick={handleCreateRoom}
-                className="px-6 py-2.5 rounded-xl bg-[#7C3AED] text-white font-black text-xs hover:bg-[#6D28D9] shadow-md shadow-purple-200 flex items-center gap-1.5 transition-all"
+                className="w-full py-3.5 px-6 rounded-2xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-sm shadow-xl shadow-purple-200 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-98 cursor-pointer"
               >
                 <span>Vào phòng chờ & Mời bạn</span>
                 <ArrowRight className="w-4 h-4" />
@@ -422,7 +510,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
         )}
 
         {/* ======================================================= */}
-        {/* PHASE 2: WAITING ROOM (PLAYER 1 WAITING FOR PLAYER 2)   */}
+        {/* PHASE 2.2: WAITING ROOM                                  */}
         {/* ======================================================= */}
         {setupStep === "waiting" && (
           <div className="bg-white rounded-3xl p-6 sm:p-9 border border-[#E8E4F3] shadow-sm space-y-6 text-center animate-in fade-in duration-200">
@@ -451,10 +539,10 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               {/* Slot 1: Player 1 (You) */}
               <div className="p-4 rounded-3xl border-2 border-[#7C3AED] bg-[#FAF8FF] space-y-2.5 shadow-sm">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 text-slate-900 font-black text-lg mx-auto flex items-center justify-center shadow-xs">
-                  ĐL
+                  {currentUser.avatar}
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-[#17133B]">Bạn (Đô La)</h4>
+                  <h4 className="text-sm font-black text-[#17133B]">Bạn ({currentUser.fullName})</h4>
                   <span className="text-[11px] font-bold text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-full inline-block mt-0.5">
                     Chủ phòng • Sẵn sàng
                   </span>
@@ -478,7 +566,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                 </div>
                 <button
                   onClick={() => setShowFriendModal(true)}
-                  className="px-3 py-1 rounded-xl bg-white text-[#7C3AED] font-bold text-[11px] border border-[#EDE9FE] hover:bg-[#EDE9FE]"
+                  className="px-3 py-1 rounded-xl bg-white text-[#7C3AED] font-bold text-[11px] border border-[#EDE9FE] hover:bg-[#EDE9FE] cursor-pointer"
                 >
                   Mời từ danh bạ
                 </button>
@@ -497,7 +585,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={() => handleCopy(inviteUrl, "link")}
-                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#E8E4F3] hover:border-[#7C3AED] text-xs font-bold text-[#17133B] flex items-center justify-center gap-1.5 transition-all"
+                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#E8E4F3] hover:border-[#7C3AED] text-xs font-bold text-[#17133B] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5 text-[#7C3AED]" />
                   <span>Sao chép Link mời</span>
@@ -505,7 +593,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
 
                 <button
                   onClick={() => handleCopy(roomCode, "code")}
-                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#E8E4F3] hover:border-[#7C3AED] text-xs font-bold text-[#17133B] flex items-center justify-center gap-1.5 transition-all"
+                  className="flex-1 py-2 px-3 rounded-xl bg-white border border-[#E8E4F3] hover:border-[#7C3AED] text-xs font-bold text-[#17133B] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5 text-[#7C3AED]" />
                   <span>Chia sẻ mã phòng</span>
@@ -513,52 +601,33 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               </div>
             </div>
 
-            {/* Simulated Friend Join Button for Instant Demo/Testing */}
-            <div className="pt-2">
-              <p className="text-[11px] text-[#77738F] mb-2">
-                Để kiểm tra luồng xem lại cấu hình đề và xác nhận sẵn sàng:
-              </p>
-              <button
-                onClick={() => {
-                  setJoinedFriend({
-                    name: "Lê Hoàng Mai",
-                    avatar: "HM",
-                    major: "Kinh tế đối ngoại (K68)",
-                  });
-                  setSetupStep("friend_reviewing");
-                }}
-                className="px-4 py-2 rounded-xl bg-purple-50 text-[#7C3AED] border border-[#EDE9FE] font-bold text-xs hover:bg-[#EDE9FE] transition-all inline-flex items-center gap-1.5 shadow-xs"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-[#7C3AED]" />
-                <span>Mô phỏng bạn Lê Hoàng Mai mở phòng xem cấu hình đề &rarr;</span>
-              </button>
-            </div>
-
             {/* Cancel Button */}
             <div className="pt-2">
               <button
                 onClick={() => setSetupStep("config")}
-                className="text-xs font-bold text-slate-500 hover:text-rose-600 hover:underline"
+                className="text-xs font-bold text-[#77738F] hover:text-rose-600 transition-colors cursor-pointer"
               >
-                Hủy phòng & Quay lại thiết lập
+                Hủy phòng chờ & Thiết lập lại
               </button>
             </div>
           </div>
         )}
 
         {/* ======================================================= */}
-        {/* PHASE 2.5: STEP 7 - FRIEND REVIEWS CONFIGURATION        */}
+        {/* PHASE 2.3: FRIEND REVIEWS CONFIGURATION                  */}
         {/* ======================================================= */}
         {setupStep === "friend_reviewing" && joinedFriend && (
           <div className="bg-white rounded-3xl p-6 sm:p-9 border-2 border-[#7C3AED]/30 shadow-lg space-y-6 text-center animate-in zoom-in-95 duration-200">
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black mb-2 border border-blue-200">
                 <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
-                <span>BƯỚC 7: BẠN ĐƯỢC MỜI ĐANG DUYỆT CẤU HÌNH ĐỀ THI</span>
+                <span>BƯỚC 2: XEM LẠI CẤU HÌNH ĐỀ THI 1VS1</span>
               </div>
               <h2 className="text-2xl font-black text-[#17133B]">{roomName}</h2>
               <p className="text-xs text-[#77738F] mt-1">
-                Người bạn đồng hành đang xem lại chi tiết nội dung ôn tập trước khi chấp nhận tham gia.
+                {isGuest
+                  ? "Bạn đã vào phòng của " + joinedFriend.name + ". Hãy xem lại nội dung trước khi xác nhận sẵn sàng!"
+                  : joinedFriend.name + " đã vào phòng và đang xem lại chi tiết nội dung đề thi..."}
               </p>
             </div>
 
@@ -571,7 +640,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                 <h4 className="text-sm font-black text-[#17133B]">{joinedFriend.name}</h4>
                 <p className="text-[11px] text-[#77738F]">{joinedFriend.major}</p>
                 <span className="text-[11px] font-bold text-blue-600 inline-block mt-0.5">
-                  Đang xem xét cấu hình câu hỏi...
+                  {isGuest ? "Chủ phòng tạo đề" : "Đang đồng bộ cấu hình..."}
                 </span>
               </div>
             </div>
@@ -601,100 +670,82 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                   </span>
                 </div>
                 <div>
-                  <span className="text-[#77738F] text-[11px] block">Định dạng câu:</span>
-                  <span className="font-bold text-slate-800">
-                    Trắc nghiệm 1 đáp án
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-[#77738F] text-[11px] block">Hình ảnh minh họa:</span>
-                  <span className="font-bold text-slate-800">
-                    {config?.includeImages !== false ? "Kèm sơ đồ & hình ảnh trực quan" : "Chỉ văn bản"}
+                  <span className="text-[#77738F] text-[11px] block">Tương tác phòng:</span>
+                  <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md inline-block">
+                    WebRTC Voice 1v1
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Simulation of Friend Decision */}
-            <div className="space-y-2 pt-2 max-w-md mx-auto">
-              <p className="text-[11px] text-[#77738F]">
-                Mô phỏng quyết định của người bạn:
-              </p>
+            {/* If GUEST: Show Accept or Decline buttons */}
+            {isGuest ? (
+              <div className="pt-2 max-w-md mx-auto space-y-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleFriendAcceptConfig}
+                    className="flex-1 py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Đồng ý cấu hình & Sẵn sàng</span>
+                  </button>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={handleFriendAcceptConfig}
-                  className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-200 transition-all"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>[Bạn Mai] Đồng ý cấu hình</span>
-                </button>
-
-                <button
-                  onClick={handleFriendDeclineConfig}
-                  className="py-3 px-4 rounded-xl bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
-                >
-                  <X className="w-4 h-4 text-rose-500" />
-                  <span>[Bạn Mai] Từ chối & Đổi đề</span>
-                </button>
+                  <button
+                    onClick={handleFriendDeclineConfig}
+                    className="py-3 px-4 rounded-2xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-200 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Từ chối</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-3 bg-blue-50 rounded-2xl border border-blue-200 text-xs text-blue-900 font-medium max-w-md mx-auto">
+                Đang chờ {joinedFriend.name} xác nhận đồng ý với cấu hình đề thi trên...
+              </div>
+            )}
           </div>
         )}
 
         {/* ======================================================= */}
-        {/* PHASE 3: STEP 8 - BOTH PLAYERS CONFIRM READINESS (READY)*/}
+        {/* PHASE 2.4: BOTH PLAYERS READY                            */}
         {/* ======================================================= */}
         {setupStep === "ready" && joinedFriend && (
-          <div className="bg-white rounded-3xl p-6 sm:p-9 border-2 border-emerald-400 shadow-md space-y-6 text-center animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-9 border-2 border-emerald-500/40 shadow-xl space-y-6 text-center animate-in zoom-in-95 duration-200">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black mb-2 border border-emerald-300">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-black mb-2 border border-emerald-200">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>BƯỚC 8: CẢ 2 ĐÃ CHẤP NHẬN BỘ ĐỀ • XÁC NHẬN SẴN SÀNG</span>
+                <span>CẢ HAI BẠN ĐÃ KẾT NỐI VÀO PHÒNG VOICE!</span>
               </div>
               <h2 className="text-2xl font-black text-[#17133B]">{roomName}</h2>
               <p className="text-xs text-[#77738F] mt-1">
-                Bộ đề: <strong>{config?.questionCount || 10} câu ({difficultyText(config?.difficulty)})</strong>. Cả 2 cùng tích chọn &ldquo;Sẵn sàng&rdquo; để hệ thống tự động phát đề bài!
+                Microphone đã sẵn sàng kết nối trực tiếp. Cùng bấm bắt đầu để bước vào phòng giải đề!
               </p>
             </div>
 
             {/* TWO PARTICIPANTS CONNECTED WITH READINESS TOGGLES */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto py-2">
               {/* Player 1 (You) */}
-              <div className={`p-4 rounded-3xl border-2 transition-all space-y-2.5 ${
-                hostReady ? "border-emerald-500 bg-emerald-50/40" : "border-slate-300 bg-slate-50"
-              }`}>
+              <div className="p-4 rounded-3xl border-2 border-emerald-500 bg-emerald-50/40 space-y-2.5 shadow-sm">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 text-slate-900 font-black text-lg mx-auto flex items-center justify-center shadow-xs">
-                  ĐL
+                  {currentUser.avatar}
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-[#17133B]">Bạn (Đô La)</h4>
-                  <span className="text-[10px] font-bold text-slate-600">Chủ phòng</span>
+                  <h4 className="text-sm font-black text-[#17133B]">Bạn ({currentUser.fullName})</h4>
+                  <span className="text-[10px] font-bold text-slate-600">{isGuest ? "Khách mời" : "Chủ phòng"}</span>
                 </div>
                 <div className="text-[11px] text-emerald-700 font-bold flex items-center justify-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span>Mic: Đã sẵn sàng</span>
                 </div>
-
-                {/* Host Readiness Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setHostReady(!hostReady)}
-                  className={`w-full py-1.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
-                    hostReady
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
-                      : "bg-white text-slate-600 border-slate-300 hover:border-emerald-400"
-                  }`}
-                >
+                <div className="w-full py-1.5 px-3 rounded-xl text-xs font-black bg-emerald-600 text-white flex items-center justify-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />
-                  <span>{hostReady ? "Bạn đã sẵn sàng ✓" : "Bấm để sẵn sàng"}</span>
-                </button>
+                  <span>Bạn đã sẵn sàng ✓</span>
+                </div>
               </div>
 
               {/* Player 2 (Friend) */}
-              <div className={`p-4 rounded-3xl border-2 transition-all space-y-2.5 ${
-                friendReady ? "border-emerald-500 bg-emerald-50/40" : "border-slate-300 bg-slate-50"
-              }`}>
+              <div className="p-4 rounded-3xl border-2 border-emerald-500 bg-emerald-50/40 space-y-2.5 shadow-sm">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-black text-lg mx-auto flex items-center justify-center shadow-xs">
                   {joinedFriend.avatar}
                 </div>
@@ -706,25 +757,14 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span>Mic: Đã kết nối WebRTC</span>
                 </div>
-
-                {/* Friend Readiness Toggle (Simulate Friend) */}
-                <button
-                  type="button"
-                  onClick={() => setFriendReady(!friendReady)}
-                  className={`w-full py-1.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
-                    friendReady
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
-                      : "bg-white text-slate-600 border-slate-300 hover:border-emerald-400"
-                  }`}
-                  title="Bấm để mô phỏng bạn sẵn sàng hoặc chưa sẵn sàng"
-                >
+                <div className="w-full py-1.5 px-3 rounded-xl text-xs font-black bg-emerald-600 text-white flex items-center justify-center gap-1.5">
                   <Check className="w-3.5 h-3.5" />
-                  <span>{friendReady ? "Bạn Mai đã sẵn sàng ✓" : "Chờ bạn Mai sẵn sàng..."}</span>
-                </button>
+                  <span>{joinedFriend.name} đã sẵn sàng ✓</span>
+                </div>
               </div>
             </div>
 
-            {/* Room Security & Privacy Lock Notice */}
+            {/* Room Security Notice */}
             <div className="p-3 bg-purple-50 rounded-2xl border border-purple-200 text-xs text-purple-900 font-medium flex items-center justify-center gap-2 max-w-md mx-auto">
               <Shield className="w-4 h-4 text-[#7C3AED] shrink-0" />
               <span>Phòng đã đạt giới hạn 2 người. Đã khóa để không bị làm phiền trong lúc học thoại.</span>
@@ -734,18 +774,9 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
             <div className="pt-2">
               <button
                 onClick={handleStartActiveSession}
-                disabled={!hostReady || !friendReady}
-                className={`w-full max-w-md mx-auto py-3.5 px-6 rounded-2xl text-white font-black text-sm shadow-xl flex items-center justify-center gap-2 transition-all active:scale-98 ${
-                  hostReady && friendReady
-                    ? "bg-[#7C3AED] hover:bg-[#6D28D9] shadow-purple-200 cursor-pointer"
-                    : "bg-slate-300 text-slate-500 shadow-none cursor-not-allowed"
-                }`}
+                className="w-full max-w-md mx-auto py-3.5 px-6 rounded-2xl text-white font-black text-sm shadow-xl bg-[#7C3AED] hover:bg-[#6D28D9] shadow-purple-200 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer hover:scale-[1.01]"
               >
-                <span>
-                  {hostReady && friendReady
-                    ? "Bắt đầu ôn tập ngay (Cả 2 đã sẵn sàng) →"
-                    : "Đang chờ cả hai cùng sẵn sàng..."}
-                </span>
+                <span>Bắt đầu ôn tập ngay (Cả 2 đã sẵn sàng) &rarr;</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -757,7 +788,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
       {/* FRIEND LIST MODAL (METHOD 3)                              */}
       {/* ========================================================= */}
       {showFriendModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-[#E8E4F3] animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-black text-base text-[#17133B]">
@@ -766,7 +797,7 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
               </div>
               <button
                 onClick={() => setShowFriendModal(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -779,49 +810,127 @@ export function PKVoiceRoomSetup({ subject, config, onBack, onStartSession }: PK
                 type="text"
                 value={friendSearch}
                 onChange={(e) => setFriendSearch(e.target.value)}
-                placeholder="Tìm bạn theo tên hoặc chuyên ngành..."
+                placeholder="Tìm bạn theo tên, tài khoản hoặc trường..."
                 className="w-full pl-9 pr-3 py-2 bg-[#F8F7FC] border border-[#E8E4F3] rounded-xl text-xs font-semibold focus:outline-none focus:border-[#7C3AED]"
               />
             </div>
 
             {/* Friends List */}
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {filteredFriends.map((f) => (
-                <div
-                  key={f.id}
-                  className="p-3 rounded-2xl border border-[#E8E4F3] hover:border-[#7C3AED] hover:bg-[#FAF8FF] flex items-center justify-between transition-all"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-black text-xs flex items-center justify-center">
-                      {f.avatar}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <h5 className="text-xs font-black text-[#17133B]">{f.name}</h5>
-                        {f.online && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" title="Đang online" />
-                        )}
-                      </div>
-                      <p className="text-[10px] text-[#77738F]">{f.major}</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleInviteFriend(f)}
-                    className="px-3 py-1.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-xs transition-all shadow-xs"
-                  >
-                    Mời học
-                  </button>
+              {friendList.length === 0 ? (
+                <div className="text-center py-6 text-xs text-[#77738F]">
+                  Không tìm thấy bạn học phù hợp với từ khóa "{friendSearch}".
                 </div>
-              ))}
+              ) : (
+                friendList.map((f) => (
+                  <div
+                    key={f.id}
+                    className="p-3 rounded-2xl border border-[#E8E4F3] hover:border-[#7C3AED] hover:bg-[#FAF8FF] flex items-center justify-between transition-all"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-black text-xs flex items-center justify-center">
+                        {f.avatar}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h5 className="text-xs font-black text-[#17133B]">{f.fullName}</h5>
+                          {f.isOnline && (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" title="Đang online" />
+                          )}
+                        </div>
+                        <p className="text-[10px] text-[#77738F]">{f.university} • {f.major}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleInviteFriend(f)}
+                      className="px-3 py-1.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-xs transition-all shadow-xs cursor-pointer"
+                    >
+                      Mời học
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="text-center pt-2">
               <button
                 onClick={() => setShowFriendModal(false)}
-                className="text-xs font-bold text-slate-500 hover:underline"
+                className="text-xs font-bold text-slate-500 hover:underline cursor-pointer"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* PROFILE EDIT MODAL                                        */}
+      {/* ========================================================= */}
+      {showEditProfile && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-[#E8E4F3] animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-black text-base text-[#17133B]">
+                <GraduationCap className="w-5 h-5 text-[#7C3AED]" />
+                <span>Hồ sơ sinh viên của bạn</span>
+              </div>
+              <button
+                onClick={() => setShowEditProfile(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-[#17133B] block mb-1">Họ và tên hiển thị:</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="VD: Minh Tân, Thu Hà..."
+                  className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#E8E4F3] rounded-xl font-semibold focus:outline-none focus:border-[#7C3AED]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[#17133B] block mb-1">Trường Đại học:</label>
+                <input
+                  type="text"
+                  value={editUniversity}
+                  onChange={(e) => setEditUniversity(e.target.value)}
+                  placeholder="VD: UEH, NEU, FTU, UFM..."
+                  className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#E8E4F3] rounded-xl font-semibold focus:outline-none focus:border-[#7C3AED]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[#17133B] block mb-1">Chuyên ngành:</label>
+                <input
+                  type="text"
+                  value={editMajor}
+                  onChange={(e) => setEditMajor(e.target.value)}
+                  placeholder="VD: Kinh tế đối ngoại, Kế toán..."
+                  className="w-full px-3 py-2 bg-[#F8F7FC] border border-[#E8E4F3] rounded-xl font-semibold focus:outline-none focus:border-[#7C3AED]"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                onClick={() => setShowEditProfile(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                className="flex-1 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-xs cursor-pointer"
+              >
+                Lưu hồ sơ
               </button>
             </div>
           </div>

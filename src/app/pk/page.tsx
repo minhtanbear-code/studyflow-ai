@@ -6,7 +6,10 @@ import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelection
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
 import { PKVoiceLearningContainer } from "@/components/pk/PKVoiceLearningContainer";
 import { PKJoinCodeModal, RoomDetails } from "@/components/pk/PKJoinCodeModal";
+import { PKIncomingInviteModal } from "@/components/pk/PKIncomingInviteModal";
 import { supabaseService } from "@/core/services/supabaseClient";
+import { userService } from "@/core/services/userService";
+import { voiceRealtimeService, VoiceInvitation } from "@/core/services/voiceRealtimeService";
 import { MOCK_PK_SUBJECTS } from "@/core/data/mockPkData";
 import { PKSubject } from "@/core/domain/pk.types";
 
@@ -18,17 +21,34 @@ export default function PKPage() {
   const [savedSearchQuery, setSavedSearchQuery] = useState<string>("");
   const [isJoinCodeOpen, setIsJoinCodeOpen] = useState(false);
   const [joinedRoomData, setJoinedRoomData] = useState<RoomDetails | null>(null);
+  const [incomingInvite, setIncomingInvite] = useState<VoiceInvitation | null>(null);
+
+  // Lắng nghe lời mời tham gia phòng gửi từ bạn bè (Incoming Invitations)
+  useEffect(() => {
+    const user = userService.getCurrentUser();
+    const unsubscribe = voiceRealtimeService.subscribeToIncomingInvitations(user.id, (invite) => {
+      setIncomingInvite(invite);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleJoinCode = async (code: string): Promise<boolean> => {
     const clean = code.trim().toUpperCase();
     if (!clean) return false;
 
+    const currentUser = userService.getCurrentUser();
+
     // 1. Tra cứu trực tiếp trên Database Supabase PostgreSQL
     try {
-      const remoteRoom = await supabaseService.getPKRoomByCode(clean);
+      const remoteRoom = await voiceRealtimeService.getRoom(clean);
       if (remoteRoom) {
-        // Cập nhật trạng thái người tham gia lên Supabase
-        await supabaseService.joinPKRoom(remoteRoom.room_code, "Bạn đồng hành");
+        // Cập nhật trạng thái người tham gia lên Supabase với thông tin sinh viên thật
+        await voiceRealtimeService.joinRoom(remoteRoom.room_code, {
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          avatar: currentUser.avatar,
+          major: `${currentUser.university} • ${currentUser.major}`,
+        });
 
         const matchedSubject =
           MOCK_PK_SUBJECTS.find((s) => s.id === remoteRoom.subject_id) ||
@@ -122,12 +142,29 @@ export default function PKPage() {
     }
   }, []);
 
+  const handleAcceptInvite = async (invite: VoiceInvitation) => {
+    await voiceRealtimeService.respondInvitation(invite.id, true);
+    setIncomingInvite(null);
+    handleJoinCode(invite.room_code);
+  };
+
+  const handleDeclineInvite = async (invite: VoiceInvitation) => {
+    await voiceRealtimeService.respondInvitation(invite.id, false);
+    setIncomingInvite(null);
+  };
+
   return (
     <>
       <PKJoinCodeModal
         isOpen={isJoinCodeOpen}
         onClose={() => setIsJoinCodeOpen(false)}
         onJoinCode={handleJoinCode}
+      />
+
+      <PKIncomingInviteModal
+        invitation={incomingInvite}
+        onAccept={handleAcceptInvite}
+        onDecline={handleDeclineInvite}
       />
 
       {step === "voice_learning" && selectedSubject && (
@@ -173,9 +210,7 @@ export default function PKPage() {
           onOpenJoinCode={() => setIsJoinCodeOpen(true)}
           onSelectSubject={(subj, query) => {
             setSelectedSubject(subj);
-            if (query !== undefined) {
-              setSavedSearchQuery(query);
-            }
+            setSavedSearchQuery(query);
             setStep("mode");
           }}
         />

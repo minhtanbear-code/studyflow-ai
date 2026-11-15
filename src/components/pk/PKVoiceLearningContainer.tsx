@@ -16,7 +16,7 @@ interface PKVoiceLearningContainerProps {
 export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }: PKVoiceLearningContainerProps) {
   // Navigation step inside Voice Learning: "config" (Step 1) | "invitation" (Step 2) | "active" (Step 3)
   const [containerStep, setContainerStep] = useState<"config" | "invitation" | "active">(
-    initialJoinedRoom ? "active" : "config"
+    initialJoinedRoom ? "invitation" : "config"
   );
 
   // Preserved quiz configuration from Step 1
@@ -33,27 +33,12 @@ export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }
     roomCode: string;
     friendName: string;
     friendAvatar: string;
-  } | null>(() => {
-    if (initialJoinedRoom) {
-      return {
-        roomName: initialJoinedRoom.roomName,
-        roomCode: initialJoinedRoom.roomCode,
-        friendName: initialJoinedRoom.hostName || "Chủ phòng",
-        friendAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-      };
-    }
-    return null;
-  });
+    isHost?: boolean;
+  } | null>(null);
 
   // Đồng bộ khi có phòng mới được gia nhập qua mã hoặc URL
   useEffect(() => {
     if (initialJoinedRoom) {
-      setActiveSession({
-        roomName: initialJoinedRoom.roomName,
-        roomCode: initialJoinedRoom.roomCode,
-        friendName: initialJoinedRoom.hostName || "Chủ phòng",
-        friendAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-      });
       if (initialJoinedRoom.questionCount) {
         setQuizConfig((prev) => ({
           ...prev,
@@ -61,7 +46,7 @@ export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }
           difficulty: (initialJoinedRoom.difficulty as any) || prev.difficulty,
         }));
       }
-      setContainerStep("active");
+      setContainerStep("invitation");
     }
   }, [initialJoinedRoom]);
 
@@ -89,6 +74,7 @@ export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }
         friendName={activeSession.friendName}
         friendAvatar={activeSession.friendAvatar}
         config={quizConfig}
+        isHost={activeSession.isHost}
         onLeave={() => {
           setActiveSession(null);
           if (initialJoinedRoom) {
@@ -106,7 +92,16 @@ export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }
     <PKVoiceRoomSetup
       subject={subject}
       config={quizConfig}
-      onBack={() => setContainerStep("config")}
+      isGuest={Boolean(initialJoinedRoom)}
+      initialRoomCode={initialJoinedRoom?.roomCode}
+      initialHostName={initialJoinedRoom?.hostName}
+      onBack={() => {
+        if (initialJoinedRoom) {
+          onLeave();
+        } else {
+          setContainerStep("config");
+        }
+      }}
       onStartSession={(data) => {
         setActiveSession(data);
         setContainerStep("active");

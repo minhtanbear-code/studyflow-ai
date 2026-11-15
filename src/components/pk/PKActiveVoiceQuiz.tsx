@@ -32,6 +32,9 @@ import {
 import { PKSubject } from "@/core/domain/pk.types";
 import { getQuestionsBySubject, QuizQuestion } from "@/core/data/quizQuestions";
 import { soundEffects } from "@/core/services/soundEffects.service";
+import { userService } from "@/core/services/userService";
+import { voiceRealtimeService } from "@/core/services/voiceRealtimeService";
+import { WebRTCVoiceManager } from "@/core/services/webrtcService";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
 
 interface PKActiveVoiceQuizProps {
@@ -41,6 +44,7 @@ interface PKActiveVoiceQuizProps {
   friendName: string;
   friendAvatar: string;
   config?: QuizConfigData;
+  isHost?: boolean;
   onLeave: () => void;
 }
 
@@ -51,6 +55,7 @@ export function PKActiveVoiceQuiz({
   friendName,
   friendAvatar,
   config,
+  isHost = true,
   onLeave,
 }: PKActiveVoiceQuizProps) {
   // Questions list based on configured count
@@ -86,6 +91,12 @@ export function PKActiveVoiceQuiz({
   const [peerSubmitted, setPeerSubmitted] = useState<boolean>(false);
   const [peerScoreCount, setPeerScoreCount] = useState(0);
 
+  // Current user identity & partner states
+  const currentUser = userService.getCurrentUser();
+  const [friendMicOn, setFriendMicOn] = useState(true);
+  const [partnerLeft, setPartnerLeft] = useState(false);
+  const webrtcManagerRef = useRef<WebRTCVoiceManager | null>(null);
+
   // =========================================================
   // 3. VOICE & AUDIO CONNECTION STATE
   // =========================================================
@@ -102,6 +113,44 @@ export function PKActiveVoiceQuiz({
   const audioContextRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  // Khởi tạo kết nối WebRTC Voice và lắng nghe đồng bộ phòng thời gian thực
+  useEffect(() => {
+    const manager = new WebRTCVoiceManager(roomCode, currentUser.id, isHost);
+    webrtcManagerRef.current = manager;
+
+    manager.onRemoteSpeaking = (volume) => {
+      setPeerIsSpeaking(volume > 15);
+    };
+
+    manager.onConnectionStateChange = (state) => {
+      if (state === "connected") {
+        setVoiceConnectionState("connected");
+      } else if (state === "connecting") {
+        setVoiceConnectionState("connecting");
+      } else {
+        setVoiceConnectionState("reconnecting");
+      }
+    };
+
+    manager.start();
+
+    // Lắng nghe trạng thái micro và phòng từ bạn học
+    const unsub = voiceRealtimeService.subscribeToRoom(roomCode, (room) => {
+      const pMic = isHost ? room.guest_mic : room.host_mic;
+      if (pMic !== undefined) {
+        setFriendMicOn(pMic);
+      }
+      if (room.status === "closed") {
+        setPartnerLeft(true);
+      }
+    });
+
+    return () => {
+      unsub();
+      manager.destroy();
+    };
+  }, [roomCode, isHost, currentUser.id]);
 
   // Both players submitted => Reveal Answer Stage
   const isBothSubmitted = userSubmitted && peerSubmitted;
@@ -270,6 +319,8 @@ export function PKActiveVoiceQuiz({
     if (micStreamRef.current) {
       micStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = next));
     }
+    webrtcManagerRef.current?.setMicEnabled(next);
+    voiceRealtimeService.updateMicState(roomCode, isHost, next);
   };
 
   const handleConfirmAnswer = () => {
@@ -747,7 +798,7 @@ export function PKActiveVoiceQuiz({
                         userIsSpeaking ? "ring-4 ring-emerald-400 scale-105" : ""
                       }`}
                     >
-                      ĐL
+                      {currentUser.avatar}
                     </div>
                     <div
                       className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
@@ -759,9 +810,9 @@ export function PKActiveVoiceQuiz({
                   </div>
 
                   <div>
-                    <h4 className="text-xs font-black text-[#17133B]">Bạn (Đô La)</h4>
+                    <h4 className="text-xs font-black text-[#17133B]">Bạn ({currentUser.fullName})</h4>
                     <span className="text-[10px] font-bold text-[#7C3AED] bg-[#EDE9FE] px-1.5 py-0.2 rounded-md">
-                      Chủ phòng
+                      {isHost ? "Chủ phòng" : "Khách mời"}
                     </span>
                   </div>
                 </div>
@@ -819,21 +870,25 @@ export function PKActiveVoiceQuiz({
                     >
                       {friendAvatar}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white bg-emerald-500 text-white flex items-center justify-center">
-                      <Mic className="w-2.5 h-2.5" />
+                    <div
+                      className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center ${
+                        friendMicOn ? "bg-emerald-500 text-white" : "bg-rose-500 text-white"
+                      }`}
+                    >
+                      {friendMicOn ? <Mic className="w-2.5 h-2.5" /> : <MicOff className="w-2.5 h-2.5" />}
                     </div>
                   </div>
 
                   <div>
                     <h4 className="text-xs font-black text-[#17133B]">{friendName}</h4>
                     <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded-md">
-                      Bạn cùng học
+                      {isHost ? "Khách mời" : "Chủ phòng"}
                     </span>
                   </div>
                 </div>
 
                 {/* Animated Waveform if peer is speaking */}
-                {peerIsSpeaking && (
+                {peerIsSpeaking && friendMicOn && (
                   <div className="flex items-end gap-0.5 h-4">
                     <span className="w-1 h-3 bg-emerald-500 rounded-full animate-bounce" />
                     <span className="w-1 h-5 bg-emerald-500 rounded-full animate-bounce delay-75" />
@@ -847,9 +902,11 @@ export function PKActiveVoiceQuiz({
                 <span className="text-[#77738F] font-medium">
                   {peerIsSpeaking
                     ? "Đang nói..."
-                    : peerSubmitted
-                    ? "Đang nghe..."
-                    : "Đang suy nghĩ..."}
+                    : friendMicOn
+                    ? peerSubmitted
+                      ? "Đang nghe..."
+                      : "Đang suy nghĩ..."
+                    : "Đã tắt micro"}
                 </span>
 
                 {peerSubmitted ? (
@@ -1095,13 +1152,43 @@ export function PKActiveVoiceQuiz({
               <button
                 onClick={() => {
                   setShowExitModal(false);
+                  voiceRealtimeService.leaveRoom(roomCode, isHost);
+                  webrtcManagerRef.current?.destroy();
                   onLeave();
                 }}
-                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md"
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md cursor-pointer"
               >
                 Rời phòng
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ⚠️ PARTNER LEFT ROOM NOTIFICATION MODAL                   */}
+      {/* ========================================================= */}
+      {partnerLeft && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border-2 border-amber-300">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center shadow-xs">
+              <Users className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-[#17133B]">Bạn đồng hành đã rời phòng</h3>
+              <p className="text-xs text-[#77738F] mt-1 leading-relaxed">
+                {friendName} đã rời khỏi phòng học thoại. Buổi học nhóm hiện đã kết thúc.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                webrtcManagerRef.current?.destroy();
+                onLeave();
+              }}
+              className="w-full py-2.5 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-xs cursor-pointer shadow-md shadow-[#7C3AED]/20 transition-all hover:scale-[1.01]"
+            >
+              Quay lại sảnh chính
+            </button>
           </div>
         </div>
       )}
