@@ -63,6 +63,19 @@ export const voiceRealtimeService = {
     include_images: boolean;
   }): Promise<boolean> {
     try {
+      const code = room.room_code.trim().toUpperCase();
+      // Xóa phòng cũ cùng mã nếu có để tránh xung đột
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/pk_rooms?room_code=eq.${encodeURIComponent(code)}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
       const res = await fetch(`${SUPABASE_URL}/rest/v1/pk_rooms`, {
         method: "POST",
         headers: {
@@ -72,14 +85,11 @@ export const voiceRealtimeService = {
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          room_code: room.room_code,
+          room_code: code,
           room_name: room.room_name,
           subject_id: room.subject_id,
-          host_id: room.host_id,
           host_name: room.host_name,
-          host_avatar: room.host_avatar,
-          host_ready: true,
-          host_mic: true,
+          guest_name: null,
           status: "waiting",
           question_count: room.question_count,
           difficulty: room.difficulty,
@@ -99,7 +109,7 @@ export const voiceRealtimeService = {
   async getRoom(roomCode: string): Promise<RealtimeVoiceRoom | null> {
     try {
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/pk_rooms?room_code=eq.${encodeURIComponent(roomCode.trim().toUpperCase())}&limit=1`,
+        `${SUPABASE_URL}/rest/v1/pk_rooms?room_code=eq.${encodeURIComponent(roomCode.trim().toUpperCase())}&order=created_at.desc&limit=1`,
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
@@ -137,12 +147,7 @@ export const voiceRealtimeService = {
             Prefer: "return=minimal",
           },
           body: JSON.stringify({
-            guest_id: guest.id,
             guest_name: guest.fullName,
-            guest_avatar: guest.avatar,
-            guest_major: guest.major,
-            guest_ready: false,
-            guest_mic: true,
             status: "friend_reviewing",
           }),
         }
@@ -170,7 +175,6 @@ export const voiceRealtimeService = {
             Prefer: "return=minimal",
           },
           body: JSON.stringify({
-            guest_ready: true,
             status: "ready",
           }),
         }
@@ -198,7 +202,6 @@ export const voiceRealtimeService = {
           },
           body: JSON.stringify({
             guest_name: null,
-            guest_id: null,
             status: "waiting",
           }),
         }
@@ -240,20 +243,21 @@ export const voiceRealtimeService = {
    */
   async updateMicState(roomCode: string, isHost: boolean, isMicOn: boolean): Promise<boolean> {
     try {
-      const body = isHost ? { host_mic: isMicOn } : { guest_mic: isMicOn };
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/pk_rooms?room_code=eq.${encodeURIComponent(roomCode.trim().toUpperCase())}`,
-        {
-          method: "PATCH",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-            Prefer: "return=minimal",
-          },
-          body: JSON.stringify(body),
-        }
-      );
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/webrtc_signals`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          room_code: roomCode.trim().toUpperCase(),
+          sender_id: isHost ? "host" : "guest",
+          type: "mic_state",
+          payload: { isMicOn, isHost },
+        }),
+      });
       return res.ok;
     } catch (e) {
       return false;

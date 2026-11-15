@@ -172,8 +172,38 @@ export function PKVoiceRoomSetup({
     };
   }, [friendSearch, showFriendModal]);
 
+  // Tự động khởi tạo phòng trên Supabase ngay khi host mở trang
+  useEffect(() => {
+    if (!isGuest) {
+      voiceRealtimeService.createRoom({
+        room_code: roomCode,
+        room_name: roomName,
+        subject_id: subject.id,
+        host_id: currentUser.id,
+        host_name: currentUser.fullName,
+        host_avatar: currentUser.avatar,
+        question_count: config?.questionCount || 10,
+        difficulty: config?.difficulty || "medium",
+        include_images: config?.includeImages ?? true,
+      });
+    }
+  }, [roomCode, isGuest, roomName, subject.id, currentUser.id, currentUser.fullName, currentUser.avatar, config]);
+
   // Copy helper
-  const handleCopy = (text: string, type: "link" | "code") => {
+  const handleCopy = async (text: string, type: "link" | "code") => {
+    if (!isGuest) {
+      await voiceRealtimeService.createRoom({
+        room_code: roomCode,
+        room_name: roomName,
+        subject_id: subject.id,
+        host_id: currentUser.id,
+        host_name: currentUser.fullName,
+        host_avatar: currentUser.avatar,
+        question_count: config?.questionCount || 10,
+        difficulty: config?.difficulty || "medium",
+        include_images: config?.includeImages ?? true,
+      });
+    }
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(text);
       setCopiedType(type);
@@ -201,28 +231,26 @@ export function PKVoiceRoomSetup({
 
   // Lắng nghe đồng bộ phòng thời gian thực (Supabase Realtime Sync)
   useEffect(() => {
-    if (setupStep === "config" && !isGuest) return;
-
     const unsubscribe = voiceRealtimeService.subscribeToRoom(roomCode, (room: RealtimeVoiceRoom) => {
       if (!isGuest) {
         // HOST PERSPECTIVE:
         if (room.guest_name && (room.status === "friend_reviewing" || room.status === "ready" || room.status === "active")) {
           setJoinedFriend({
             name: room.guest_name,
-            avatar: room.guest_avatar || "BN",
-            major: room.guest_major || "Kinh tế",
+            avatar: room.guest_avatar || room.guest_name.slice(0, 2).toUpperCase(),
+            major: room.guest_major || "Bạn đồng hành",
           });
-          if (room.status === "friend_reviewing" && setupStep === "waiting") {
+          if (room.status === "friend_reviewing") {
             setSetupStep("friend_reviewing");
           } else if (room.status === "ready") {
-            setFriendReady(room.guest_ready ?? true);
+            setFriendReady(true);
             setSetupStep("ready");
           } else if (room.status === "active") {
             onStartSession({
               roomName: room.room_name,
               roomCode: room.room_code,
               friendName: room.guest_name,
-              friendAvatar: room.guest_avatar || "BN",
+              friendAvatar: room.guest_avatar || room.guest_name.slice(0, 2).toUpperCase(),
               isHost: true,
             });
           }
@@ -232,7 +260,7 @@ export function PKVoiceRoomSetup({
         if (room.host_name) {
           setJoinedFriend({
             name: room.host_name,
-            avatar: room.host_avatar || "DL",
+            avatar: room.host_avatar || room.host_name.slice(0, 2).toUpperCase(),
             major: "Chủ phòng",
           });
         }
@@ -243,7 +271,7 @@ export function PKVoiceRoomSetup({
             roomName: room.room_name,
             roomCode: room.room_code,
             friendName: room.host_name,
-            friendAvatar: room.host_avatar || "DL",
+            friendAvatar: room.host_avatar || room.host_name.slice(0, 2).toUpperCase(),
             isHost: false,
           });
         }
@@ -251,7 +279,7 @@ export function PKVoiceRoomSetup({
     });
 
     return () => unsubscribe();
-  }, [roomCode, setupStep, isGuest, onStartSession]);
+  }, [roomCode, isGuest, onStartSession]);
 
   // Gửi lời mời trực tiếp đến người bạn trong danh bạ
   const handleInviteFriend = async (friend: StudentProfile) => {
