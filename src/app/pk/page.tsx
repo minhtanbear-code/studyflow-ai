@@ -210,7 +210,7 @@ export default function PKPage() {
           onOpenJoinCode={() => setIsJoinCodeOpen(true)}
           onSelectSubject={(subj, query) => {
             setSelectedSubject(subj);
-            setSavedSearchQuery(query);
+            setSavedSearchQuery(query || "");
             setStep("mode");
           }}
         />
