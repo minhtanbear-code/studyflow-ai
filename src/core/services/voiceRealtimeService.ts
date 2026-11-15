@@ -261,6 +261,90 @@ export const voiceRealtimeService = {
   },
 
   /**
+   * Đồng bộ hành động làm bài (chọn đáp án, chốt đáp án, chuyển câu) giữa 2 người chơi
+   */
+  async broadcastQuizAction(
+    roomCode: string,
+    senderId: string,
+    action: {
+      type: "select" | "submit" | "next_question";
+      questionIndex: number;
+      optionIndex?: number | null;
+      isCorrect?: boolean;
+    }
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/webrtc_signals`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          room_code: roomCode,
+          sender_id: senderId,
+          type: "quiz_action",
+          payload: action,
+        }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Lắng nghe hành động làm bài thời gian thực của bạn học
+   */
+  subscribeToQuizActions(
+    roomCode: string,
+    currentUserId: string,
+    onAction: (action: {
+      type: "select" | "submit" | "next_question";
+      questionIndex: number;
+      optionIndex?: number | null;
+      isCorrect?: boolean;
+    }) => void
+  ): () => void {
+    let isActive = true;
+    const processedIds = new Set<string>();
+
+    const poll = async () => {
+      if (!isActive) return;
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(roomCode)}&sender_id=neq.${encodeURIComponent(currentUserId)}&type=eq.quiz_action&order=created_at.asc`,
+          {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        if (res.ok && isActive) {
+          const list: Array<{ id: string; payload: any }> = await res.json();
+          for (const item of list) {
+            if (!processedIds.has(item.id)) {
+              processedIds.add(item.id);
+              onAction(item.payload);
+            }
+          }
+        }
+      } catch {}
+    };
+
+    poll();
+    const interval = setInterval(poll, 1000);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  },
+
+  /**
    * Rời phòng và đóng kết nối
    */
   async leaveRoom(roomCode: string, isHost: boolean): Promise<boolean> {

@@ -93,9 +93,33 @@ export function PKActiveVoiceQuiz({
 
   // Current user identity & partner states
   const currentUser = userService.getCurrentUser();
+  const isRealPeer = Boolean(friendName && !friendName.toLowerCase().includes("bot") && friendName !== "Bot Luyện Tập");
   const [friendMicOn, setFriendMicOn] = useState(true);
   const [partnerLeft, setPartnerLeft] = useState(false);
   const webrtcManagerRef = useRef<WebRTCVoiceManager | null>(null);
+
+  // Lắng nghe đồng bộ thao tác làm bài (chọn đáp án, chốt câu) từ bạn học thật
+  useEffect(() => {
+    if (!isRealPeer) return;
+
+    const unsub = voiceRealtimeService.subscribeToQuizActions(roomCode, currentUser.id, (action) => {
+      if (action.type === "select" && action.questionIndex === currentQIndex) {
+        setPeerSelectedOption(action.optionIndex ?? null);
+        setPeerStatus("dang_suy_nghi");
+      } else if (action.type === "submit" && action.questionIndex === currentQIndex) {
+        setPeerSelectedOption(action.optionIndex ?? null);
+        setPeerSubmitted(true);
+        setPeerStatus("da_chot");
+        if (action.isCorrect) {
+          setPeerScoreCount((prev) => prev + 1);
+        }
+      } else if (action.type === "next_question" && action.questionIndex > currentQIndex) {
+        setCurrentQIndex(action.questionIndex);
+      }
+    });
+
+    return () => unsub();
+  }, [roomCode, currentUser.id, currentQIndex, isRealPeer]);
 
   // =========================================================
   // 3. VOICE & AUDIO CONNECTION STATE
@@ -219,38 +243,41 @@ export function PKActiveVoiceQuiz({
     setPeerStatus("dang_suy_nghi");
     setTimeLeft(60);
 
-    // Peer simulated voice discussion timeline
-    const peerSpeakTimer = setTimeout(() => {
-      setPeerIsSpeaking(true);
-      setPeerStatus("dang_noi");
+    // Nếu đấu với người thật, không chạy timer mô phỏng bot
+    if (!isRealPeer) {
+      // Peer simulated voice discussion timeline (chỉ dùng khi đấu với Bot)
+      const peerSpeakTimer = setTimeout(() => {
+        setPeerIsSpeaking(true);
+        setPeerStatus("dang_noi");
 
-      setTimeout(() => {
-        setPeerIsSpeaking(false);
-        setPeerStatus("dang_suy_nghi");
-      }, 4000);
+        setTimeout(() => {
+          setPeerIsSpeaking(false);
+          setPeerStatus("dang_suy_nghi");
+        }, 4000);
 
-      // Peer selects realistic answer
-      const correctIdx = currentQ.correct;
-      const willBeCorrect = Math.random() < 0.8;
-      const peerPick = willBeCorrect
-        ? correctIdx
-        : (correctIdx + 1) % currentQ.options.length;
+        // Peer selects realistic answer
+        const correctIdx = currentQ.correct;
+        const willBeCorrect = Math.random() < 0.8;
+        const peerPick = willBeCorrect
+          ? correctIdx
+          : (correctIdx + 1) % currentQ.options.length;
 
-      setPeerSelectedOption(peerPick);
+        setPeerSelectedOption(peerPick);
 
-      // Peer confirms after discussion
-      const peerConfirmTimer = setTimeout(() => {
-        setPeerSubmitted(true);
-        setPeerStatus("da_chot");
-        if (peerPick === correctIdx) {
-          setPeerScoreCount((prev) => prev + 1);
-        }
-      }, 4500);
+        // Peer confirms after discussion
+        const peerConfirmTimer = setTimeout(() => {
+          setPeerSubmitted(true);
+          setPeerStatus("da_chot");
+          if (peerPick === correctIdx) {
+            setPeerScoreCount((prev) => prev + 1);
+          }
+        }, 4500);
 
-      return () => clearTimeout(peerConfirmTimer);
-    }, 3000);
+        return () => clearTimeout(peerConfirmTimer);
+      }, 3000);
 
-    return () => clearTimeout(peerSpeakTimer);
+      return () => clearTimeout(peerSpeakTimer);
+    }
   }, [currentQIndex, currentQ]);
 
   // Real Microphone Capture Effect
@@ -323,17 +350,45 @@ export function PKActiveVoiceQuiz({
     voiceRealtimeService.updateMicState(roomCode, isHost, next);
   };
 
+  const handleSelectOption = (idx: number) => {
+    if (userSubmitted) return;
+    setUserSelectedOption(idx);
+    if (isRealPeer) {
+      voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
+        type: "select",
+        questionIndex: currentQIndex,
+        optionIndex: idx,
+      });
+    }
+  };
+
   const handleConfirmAnswer = () => {
     if (userSelectedOption === null || userSubmitted) return;
     setUserSubmitted(true);
-    if (userSelectedOption === currentQ.correct) {
+    const isCorrect = userSelectedOption === currentQ.correct;
+    if (isCorrect) {
       setUserScoreCount((prev) => prev + 1);
+    }
+    if (isRealPeer) {
+      voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
+        type: "submit",
+        questionIndex: currentQIndex,
+        optionIndex: userSelectedOption,
+        isCorrect,
+      });
     }
   };
 
   const handleNextQuestion = () => {
     if (currentQIndex + 1 < questions.length) {
-      setCurrentQIndex((prev) => prev + 1);
+      const nextIdx = currentQIndex + 1;
+      setCurrentQIndex(nextIdx);
+      if (isRealPeer) {
+        voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
+          type: "next_question",
+          questionIndex: nextIdx,
+        });
+      }
     }
   };
 
@@ -572,7 +627,7 @@ export function PKActiveVoiceQuiz({
                   key={optIdx}
                   onClick={() => {
                     if (!userSubmitted) {
-                      setUserSelectedOption(optIdx);
+                      handleSelectOption(optIdx);
                     }
                   }}
                   className={`w-full rounded-2xl p-4 border-2 transition-all flex items-start justify-between gap-3 ${

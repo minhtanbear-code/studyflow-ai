@@ -63,10 +63,13 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // 1. Nếu chưa đăng nhập và cố truy cập route nội bộ -> chuyển hướng về /login
+  // 1. Nếu chưa đăng nhập và cố truy cập route nội bộ -> chuyển hướng về /login kèm đầy đủ query params
   if (!user && !isAuthRoute) {
     url.pathname = "/login";
-    url.searchParams.set("redirect", pathname);
+    const fullRedirectPath = request.nextUrl.search
+      ? `${pathname}${request.nextUrl.search}`
+      : pathname;
+    url.searchParams.set("redirect", fullRedirectPath);
     return NextResponse.redirect(url);
   }
 

@@ -221,7 +221,7 @@ function LoginForm() {
           <div className="pt-2 text-center text-xs text-[#77738F] font-medium border-t border-[#F0EDF9]">
             <span>Chưa có tài khoản? </span>
             <Link
-              href="/register"
+              href={`/register${redirectUrl !== "/" ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
               className="font-black text-[#7C3AED] hover:underline inline-flex items-center gap-1 ml-1"
             >
               <span>Đăng ký nhanh (30 giây)</span>

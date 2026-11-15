@@ -2,12 +2,14 @@
 
 import React, { useState, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus, Mail, Lock, Sparkles, ArrowRight, AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@/core/supabase/client";
 
 function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
 
   // Form fields strictly: Email, Password, Confirm Password
   const [email, setEmail] = useState("");
@@ -67,8 +69,8 @@ function RegisterForm() {
       if (data.user && !data.session) {
         router.push(`/verify-email?email=${encodeURIComponent(cleanEmail)}`);
       } else if (data.session) {
-        // Nếu dự án tắt Confirm Email -> vào thẳng
-        router.push("/");
+        // Vào thẳng trang đích được yêu cầu (hoặc Dashboard)
+        router.push(redirectUrl);
         router.refresh();
       }
     } catch (err: any) {
@@ -86,7 +88,7 @@ function RegisterForm() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${siteUrl}/auth/callback`,
+          redirectTo: `${siteUrl}/auth/callback?next=${encodeURIComponent(redirectUrl)}`,
           queryParams: {
             access_type: "offline",
             prompt: "consent",
@@ -247,7 +249,7 @@ function RegisterForm() {
           <div className="pt-2 text-center text-xs text-[#77738F] font-medium border-t border-[#F0EDF9]">
             <span>Đã có tài khoản? </span>
             <Link
-              href="/login"
+              href={`/login${redirectUrl !== "/" ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
               className="font-black text-[#7C3AED] hover:underline inline-flex items-center gap-1 ml-1"
             >
               <span>Đăng nhập ngay</span>
