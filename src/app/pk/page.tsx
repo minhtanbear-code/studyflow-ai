@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { PKDocumentUploadScreen } from "@/components/pk/PKDocumentUploadScreen";
 import { PKDocumentAnalysisScreen } from "@/components/pk/PKDocumentAnalysisScreen";
 import { PKQuestionRecommendation } from "@/components/pk/PKQuestionRecommendation";
+import { PKQuestionReviewScreen } from "@/components/pk/PKQuestionReviewScreen";
 import { PKSubjectSelectionScreen } from "@/components/pk/PKSubjectSelectionScreen";
 import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelectionScreen";
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
@@ -26,14 +27,15 @@ import { documentAnalysisService } from "@/core/services/documentAnalysisService
 
 export default function PKPage() {
   const [step, setStep] = useState<
-    "upload" | "analyzing" | "recommendation" | "subject" | "mode" | "friend_mode" | "voice_learning"
+    "upload" | "analyzing" | "recommendation" | "review" | "subject" | "mode" | "friend_mode" | "voice_learning"
   >("upload");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedDocumentFile[]>([]);
   const [analysisResult, setAnalysisResult] = useState<DocumentAnalysisResult | null>(null);
   const [aiRecommendation, setAiRecommendation] = useState<AIQuestionRecommendation | null>(null);
+  const [activeConfig, setActiveConfig] = useState<DocumentQuizCustomConfig | null>(null);
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestionWithSource[]>([]);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
-  const [generationSuccessInfo, setGenerationSuccessInfo] = useState<{ count: number; config: DocumentQuizCustomConfig } | null>(null);
+  const [isSetConfirmedModalOpen, setIsSetConfirmedModalOpen] = useState(false);
 
   const [selectedSubject, setSelectedSubject] = useState<PKSubject>(
     MOCK_PK_SUBJECTS.find((s) => s.id === "eco101") || MOCK_PK_SUBJECTS[1]
@@ -176,6 +178,7 @@ export default function PKPage() {
   const handleGenerateQuestions = async (config: DocumentQuizCustomConfig) => {
     if (!analysisResult) return;
     setIsGeneratingQuestions(true);
+    setActiveConfig(config);
     try {
       const generated = await documentAnalysisService.generateQuestions(
         analysisResult,
@@ -183,7 +186,7 @@ export default function PKPage() {
         uploadedFiles[0]?.name || "Tài liệu học tập"
       );
       setGeneratedQuestions(generated);
-      setGenerationSuccessInfo({ count: generated.length, config });
+      setStep("review");
 
       // Lưu trữ phiên học tập vào sessionStorage
       try {
@@ -207,6 +210,53 @@ export default function PKPage() {
     }
   };
 
+  const handleRegenerateSingle = (questionId: string, index: number) => {
+    if (!analysisResult) return;
+    const cfg = activeConfig || {
+      selectedChapterIds: [],
+      selectedTopics: [],
+      isAllDocument: true,
+      questionCount: generatedQuestions.length,
+      difficulty: "medium",
+      questionTypes: ["single_choice"],
+    };
+    const newQuestion = documentAnalysisService.regenerateSingleQuestion(
+      analysisResult,
+      cfg,
+      uploadedFiles[0]?.name || "Tài liệu học tập",
+      index
+    );
+    const updated = generatedQuestions.map((q) => (q.id === questionId ? newQuestion : q));
+    setGeneratedQuestions(updated);
+  };
+
+  const handleRegenerateAll = async () => {
+    if (!analysisResult) return;
+    const cfg = activeConfig || {
+      selectedChapterIds: [],
+      selectedTopics: [],
+      isAllDocument: true,
+      questionCount: generatedQuestions.length,
+      difficulty: "medium",
+      questionTypes: ["single_choice"],
+    };
+    try {
+      const generated = await documentAnalysisService.generateQuestions(
+        analysisResult,
+        cfg,
+        uploadedFiles[0]?.name || "Tài liệu học tập"
+      );
+      setGeneratedQuestions(generated);
+    } catch (e) {
+      console.error("Lỗi tạo lại tất cả câu hỏi:", e);
+    }
+  };
+
+  const handleConfirmQuestionSet = (confirmedQuestions: GeneratedQuestionWithSource[]) => {
+    setGeneratedQuestions(confirmedQuestions);
+    setIsSetConfirmedModalOpen(true);
+  };
+
   return (
     <>
       <PKJoinCodeModal
@@ -221,18 +271,19 @@ export default function PKPage() {
         onDecline={handleDeclineInvite}
       />
 
-      {/* MODAL THÔNG BÁO HOÀN TẤT TẠO BỘ CÂU HỎI (PHASE 2 SUCCESS) */}
-      {generationSuccessInfo && (
+      {/* MODAL THÔNG BÁO XÁC NHẬN BỘ CÂU HỎI THÀNH CÔNG (PHASE 3 -> PHASE 4) */}
+      {isSetConfirmedModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 border border-purple-200 shadow-2xl text-center">
             <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
-              <span className="text-3xl">✨</span>
+              <span className="text-3xl">🎯</span>
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-xl font-black text-[#17133B]">Bộ câu hỏi đã được tạo thành công!</h3>
-              <p className="text-xs text-[#77738F] font-medium">
-                AI đã trích xuất và sinh <strong>{generationSuccessInfo.count} câu hỏi</strong> trắc nghiệm bám sát nội dung tài liệu.
+              <h3 className="text-xl font-black text-[#17133B]">Bộ câu hỏi đã được xác nhận!</h3>
+              <p className="text-xs text-[#77738F] font-medium leading-relaxed">
+                Đã sẵn sàng <strong>{generatedQuestions.length} câu hỏi</strong> bám sát tài liệu cho môn{" "}
+                <strong className="text-[#7C3AED]">{selectedSubject.name}</strong>.
               </p>
             </div>
 
@@ -242,36 +293,41 @@ export default function PKPage() {
                 <span className="font-black text-[#7C3AED]">{selectedSubject.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#77738F]">Số lượng:</span>
-                <span className="font-bold">{generationSuccessInfo.count} câu</span>
+                <span className="text-[#77738F]">Số lượng câu:</span>
+                <span className="font-bold">{generatedQuestions.length} câu</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#77738F]">Mức độ:</span>
-                <span className="font-bold capitalize">{generationSuccessInfo.config.difficulty}</span>
+                <span className="text-[#77738F]">Đã xác minh bởi bạn:</span>
+                <span className="font-bold text-emerald-700">
+                  {generatedQuestions.filter((q) => q.validationStatus === "user_verified").length} /{" "}
+                  {generatedQuestions.length}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#77738F]">Trạng thái:</span>
-                <span className="text-amber-700 font-bold">AI tạo – chưa xác minh</span>
+                <span className="text-[#77738F]">Tài liệu nguồn:</span>
+                <span className="font-bold truncate max-w-[180px]">
+                  {uploadedFiles[0]?.name || "Tài liệu tải lên"}
+                </span>
               </div>
             </div>
 
             <div className="pt-2 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => setGenerationSuccessInfo(null)}
+                onClick={() => {
+                  setIsSetConfirmedModalOpen(false);
+                  setStep("mode");
+                }}
                 className="w-full py-3 px-4 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-xs shadow-md shadow-purple-200 transition-all cursor-pointer"
               >
-                Tiếp tục xem & chỉnh sửa câu hỏi (Phase 3)
+                Tiến hành chọn chế độ học (Gameplay) &rarr;
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGenerationSuccessInfo(null);
-                  setStep("recommendation");
-                }}
+                onClick={() => setIsSetConfirmedModalOpen(false)}
                 className="text-xs font-bold text-[#77738F] hover:text-[#17133B] py-1 cursor-pointer"
               >
-                Cấu hình lại bộ câu hỏi khác
+                Tiếp tục xem lại bộ câu hỏi
               </button>
             </div>
           </div>
@@ -329,6 +385,47 @@ export default function PKPage() {
             setSavedSearchQuery(query || "");
             setStep("mode");
           }}
+        />
+      )}
+
+      {/* NEW FLOW - STEP 3: QUESTION GENERATION & REVIEW BEFORE PLAY */}
+      {step === "review" && analysisResult && generatedQuestions.length > 0 && (
+        <PKQuestionReviewScreen
+          subject={selectedSubject}
+          analysis={analysisResult}
+          config={
+            activeConfig || {
+              selectedChapterIds: [],
+              selectedTopics: [],
+              isAllDocument: true,
+              questionCount: generatedQuestions.length,
+              difficulty: "medium",
+              questionTypes: ["single_choice"],
+            }
+          }
+          sourceFileName={uploadedFiles[0]?.name || "Tài liệu học tập"}
+          questions={generatedQuestions}
+          onUpdateQuestions={(updated) => {
+            setGeneratedQuestions(updated);
+            try {
+              sessionStorage.setItem(
+                "studyflow_doc_session",
+                JSON.stringify({
+                  subject: selectedSubject,
+                  analysis: analysisResult,
+                  config: activeConfig,
+                  questions: updated,
+                  timestamp: Date.now(),
+                })
+              );
+            } catch (e) {
+              console.warn("Lỗi lưu sessionStorage:", e);
+            }
+          }}
+          onRegenerateSingle={handleRegenerateSingle}
+          onRegenerateAll={handleRegenerateAll}
+          onConfirmSet={handleConfirmQuestionSet}
+          onBackToConfig={() => setStep("recommendation")}
         />
       )}
 

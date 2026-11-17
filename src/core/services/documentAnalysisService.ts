@@ -366,4 +366,102 @@ export const documentAnalysisService = {
 
     return questions;
   },
+
+  /**
+   * Tạo lại 1 câu hỏi cụ thể khi người dùng bấm "Tạo lại câu này"
+   */
+  regenerateSingleQuestion(
+    analysis: DocumentAnalysisResult,
+    config: DocumentQuizCustomConfig,
+    sourceFileName: string,
+    questionIndex: number
+  ): GeneratedQuestionWithSource {
+    const isEco =
+      (analysis.identifiedSubjectName || "").toLowerCase().includes("kinh tế") ||
+      analysis.rawText.toLowerCase().includes("khan hiếm");
+
+    const sampleExcerpts = [
+      "Chi phí cơ hội của một phương án là giá trị của cơ hội tốt nhất bị bỏ qua khi đưa ra sự lựa chọn đó.",
+      "Đường giới hạn khả năng sản xuất (PPF) biểu thị các kết hợp tối đa lượng hàng hóa mà nền kinh tế có thể sản xuất với nguồn lực và công nghệ hiện có.",
+      "Tính khan hiếm là sự hữu hạn của các nguồn lực kinh tế so với nhu cầu vô hạn của xã hội.",
+      "Quy luật cầu chỉ ra rằng khi giá hàng hóa tăng (các yếu tố khác không đổi), lượng cầu đối với hàng hóa đó sẽ giảm.",
+      "Kinh tế học vi mô tập trung nghiên cứu hành vi ra quyết định của các chủ thể kinh tế đơn lẻ như hộ gia đình và doanh nghiệp.",
+    ];
+
+    const altTemplates = isEco
+      ? [
+          {
+            q: "Khi nền kinh tế hoạt động bên trong đường PPF, điều này phản ánh tình trạng gì theo tài liệu?",
+            options: [
+              "Nguồn lực bị lãng phí hoặc sử dụng chưa đạt hiệu quả tối đa",
+              "Công nghệ sản xuất đạt mức tối ưu cao nhất trong lịch sử",
+              "Toàn bộ lao động xã hội đã có việc làm và thu nhập cao",
+              "Không thể tăng thêm sản lượng của bất kỳ mặt hàng nào",
+            ],
+            correct: 0,
+            explanation: "Điểm bên trong đường PPF thể hiện sự phi hiệu quả, còn tiềm năng nguồn lực chưa được khai thác hết.",
+            excerpt: sampleExcerpts[1],
+            topic: "Mô hình PPF",
+          },
+          {
+            q: "Theo tài liệu, phát biểu nào sau đây phân biệt ĐÚNG giữa kinh tế học thực chứng và chuẩn tắc?",
+            options: [
+              "Thực chứng giải thích thế giới thực đang vận hành thế nào; chuẩn tắc đưa ra đánh giá nên như thế nào",
+              "Thực chứng chỉ dựa trên quan điểm cá nhân; chuẩn tắc dựa trên số liệu thực tế",
+              "Thực chứng không thể kiểm định bằng dữ liệu khách quan",
+              "Cả hai đều chỉ mang tính chất dự đoán viển vông",
+            ],
+            correct: 0,
+            explanation: "Thực chứng trả lời câu hỏi 'là gì/như thế nào'; Chuẩn tắc trả lời câu hỏi 'nên như thế nào' dựa trên phán xét giá trị.",
+            excerpt: sampleExcerpts[4],
+            topic: "Phương pháp luận",
+          },
+          {
+            q: "Khái niệm 'Bàn tay vô hình' được đề cập trong bối cảnh nào của tài liệu?",
+            options: [
+              "Cơ chế giá cả trên thị trường tự do định hướng phân bổ nguồn lực",
+              "Sự can thiệp bằng mệnh lệnh hành chính cưỡng chế của nhà nước",
+              "Các thỏa thuận độc quyền ngầm giữa các công ty sản xuất lớn",
+              "Hành vi từ thiện phi lợi nhuận của người tiêu dùng",
+            ],
+            correct: 0,
+            explanation: "Adam Smith mô tả 'bàn tay vô hình' chính là lực lượng thị trường thông qua giá cả tự điều phối lợi ích cá nhân thành lợi ích xã hội.",
+            excerpt: sampleExcerpts[0],
+            topic: "Cơ chế thị trường",
+          },
+        ]
+      : [
+          {
+            q: `Dựa vào tài liệu "${sourceFileName}", điều kiện tiên quyết để vận dụng kiến thức là gì?`,
+            options: [
+              "Thấu hiểu bản chất quy luật và phạm vi áp dụng thực tế",
+              "Chỉ cần ghi nhớ lý thuyết mà không cần làm bài tập",
+              "Bỏ qua các giả định nền tảng đã nêu trong tài liệu",
+              "Áp dụng máy móc cho tất cả các tình huống phát sinh",
+            ],
+            correct: 0,
+            explanation: "Tài liệu nhấn mạnh việc nắm vững bản chất và điều kiện biên là chìa khóa để vận dụng chính xác.",
+            excerpt: `Trích từ ${sourceFileName}: Nội dung trọng tâm yêu cầu sinh viên hiểu rõ điều kiện và ngữ cảnh của nguyên lý.`,
+            topic: "Phương pháp luận & Thực hành",
+          },
+        ];
+
+    const template = altTemplates[questionIndex % altTemplates.length];
+    return {
+      id: `ai-q-regen-${Date.now()}-${questionIndex + 1}`,
+      questionText: `(Tạo mới lại) ${template.q}`,
+      options: [...template.options],
+      correctAnswers: [template.correct],
+      explanation: template.explanation,
+      sourceReference: {
+        fileName: sourceFileName,
+        chapterOrSection: analysis.chapters[questionIndex % analysis.chapters.length]?.title || "Chương trọng tâm",
+        excerpt: template.excerpt,
+      },
+      topic: template.topic,
+      difficulty: config.difficulty || "medium",
+      validationStatus: "ai_generated_unverified",
+      createdAt: new Date().toISOString(),
+    };
+  },
 };
