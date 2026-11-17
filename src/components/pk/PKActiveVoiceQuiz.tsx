@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Info,
   Lightbulb,
+  Loader2,
   Lock,
   Mic,
   MicOff,
@@ -34,7 +35,7 @@ import { getQuestionsBySubject, QuizQuestion } from "@/core/data/quizQuestions";
 import { soundEffects } from "@/core/services/soundEffects.service";
 import { userService } from "@/core/services/userService";
 import { voiceRealtimeService } from "@/core/services/voiceRealtimeService";
-import { WebRTCVoiceManager } from "@/core/services/webrtcService";
+import { WebRTCVoiceManager, WebRTCVoiceStats } from "@/core/services/webrtcService";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
 
 interface PKActiveVoiceQuizProps {
@@ -134,10 +135,11 @@ export function PKActiveVoiceQuiz({
   const [isMusicOn, setIsMusicOn] = useState(true);
   const [voiceConnectionState, setVoiceConnectionState] = useState<
     "connected" | "connecting" | "reconnecting"
-  >("connected");
+  >("connecting");
   const [userIsSpeaking, setUserIsSpeaking] = useState(false);
   const [peerIsSpeaking, setPeerIsSpeaking] = useState(false);
   const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
+  const [webrtcStats, setWebrtcStats] = useState<WebRTCVoiceStats | null>(null);
 
   // Dedicated DOM Audio Element ref for peer voice
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -166,6 +168,14 @@ export function PKActiveVoiceQuiz({
 
     manager.onRemoteAudioPlaying = () => {
       setIsAutoplayBlocked(false);
+    };
+
+    manager.onStatsUpdate = (stats) => {
+      setWebrtcStats(stats);
+    };
+
+    manager.onError = (err) => {
+      console.warn("[PKActiveVoiceQuiz] WebRTC Error:", err);
     };
 
     manager.onConnectionStateChange = (state) => {
@@ -415,10 +425,32 @@ export function PKActiveVoiceQuiz({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#FAF8FF] border border-[#7C3AED]/30 text-xs">
-            <Radio className="w-3.5 h-3.5 text-[#7C3AED] animate-pulse" />
-            <span className="font-bold text-[#7C3AED]">
-              {voiceConnectionState === "connected" ? "WebRTC Voice Live" : "Đang kết nối lại..."}
+          <div
+            className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+              voiceConnectionState === "connected"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                : voiceConnectionState === "connecting"
+                ? "bg-amber-50 text-amber-700 border-amber-300 animate-pulse"
+                : "bg-rose-50 text-rose-700 border-rose-300"
+            }`}
+          >
+            {voiceConnectionState === "connecting" ? (
+              <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+            ) : (
+              <Radio
+                className={`w-3.5 h-3.5 ${
+                  voiceConnectionState === "connected"
+                    ? "text-emerald-600 animate-pulse"
+                    : "text-rose-500 animate-pulse"
+                }`}
+              />
+            )}
+            <span>
+              {voiceConnectionState === "connected"
+                ? "WebRTC Voice Live"
+                : voiceConnectionState === "connecting"
+                ? "Đang kết nối Voice..."
+                : "Đang kết nối lại..."}
             </span>
           </div>
         </div>
@@ -1000,8 +1032,20 @@ export function PKActiveVoiceQuiz({
                 <Radio className="w-4 h-4 text-[#7C3AED]" />
                 <span>Bảng điều khiển thoại</span>
               </span>
-              <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Đã kết nối
+              <span
+                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border transition-all ${
+                  voiceConnectionState === "connected"
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-300"
+                    : voiceConnectionState === "connecting"
+                    ? "text-amber-800 bg-amber-50 border-amber-300 animate-pulse"
+                    : "text-rose-700 bg-rose-50 border-rose-300"
+                }`}
+              >
+                {voiceConnectionState === "connected"
+                  ? "Đã kết nối"
+                  : voiceConnectionState === "connecting"
+                  ? "Đang kết nối..."
+                  : "Mất kết nối"}
               </span>
             </div>
 
@@ -1053,6 +1097,28 @@ export function PKActiveVoiceQuiz({
               >
                 {isMusicOn ? "Đang bật" : "Tắt"}
               </button>
+            </div>
+
+            {/* Live WebRTC Diagnostic Status */}
+            <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1.5 font-medium">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-bold">Kênh thoại P2P:</span>
+                <span className="font-mono text-[10px] font-black text-[#7C3AED]">
+                  {voiceConnectionState === "connected" ? "Live (P2P Mesh)" : "Đang bắt tay ICE..."}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-bold">Âm thanh bạn học:</span>
+                <span className="font-bold flex items-center gap-1">
+                  {webrtcStats?.remoteAudioPlaying ? (
+                    <span className="text-emerald-600">Đang phát loa ✓</span>
+                  ) : webrtcStats?.hasRemoteAudio ? (
+                    <span className="text-blue-600">Đã nhận track</span>
+                  ) : (
+                    <span className="text-slate-400">Đang chờ đối tác...</span>
+                  )}
+                </span>
+              </div>
             </div>
 
             <button
