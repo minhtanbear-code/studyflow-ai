@@ -41,6 +41,7 @@ import {
   QuizSyncAction,
   SyncedQuestion,
   VoiceRoomSession,
+  computeQuestionHash,
 } from "@/core/services/voiceRealtimeService";
 import { WebRTCVoiceManager, WebRTCVoiceStats } from "@/core/services/webrtcService";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
@@ -216,6 +217,23 @@ export function PKActiveVoiceQuiz({
     setTimeLeft(remaining);
   };
 
+  // Hàm tải lại phiên câu hỏi từ máy chủ (Force Re-sync)
+  const handleForceResync = async () => {
+    try {
+      const remote = await voiceRealtimeService.getRoomSession(roomCode);
+      if (remote && remote.questions && remote.questions.length > 0) {
+        setSessionData(remote);
+        setSyncedQuestions(remote.questions);
+        setSessionDeadline(remote.deadline || Date.now() + 60000);
+        setIsLoadingSession(false);
+        return true;
+      }
+    } catch (e) {
+      console.warn("[PKActiveVoiceQuiz] Force re-sync error:", e);
+    }
+    return false;
+  };
+
   // Đồng bộ hóa phiên câu hỏi chính thức (Single Source of Truth) từ Server
   useEffect(() => {
     let isSubscribed = true;
@@ -235,6 +253,9 @@ export function PKActiveVoiceQuiz({
         const now = Date.now();
         const deadline = now + 60000;
         const canonical = buildCanonicalQuestions();
+        const q0 = canonical[0];
+        const q0Hash = computeQuestionHash(q0.q, q0.options);
+
         const newSession: VoiceRoomSession = {
           roomId: roomCode,
           roomSessionId: `sess-${roomCode.replace(/[^A-Za-z0-9]/g, "")}-${now}`,
@@ -252,7 +273,14 @@ export function PKActiveVoiceQuiz({
         await voiceRealtimeService.saveRoomSession(newSession);
         await voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
           type: "init_question",
+          roomId: roomCode,
+          roomSessionId: newSession.roomSessionId,
+          questionSetId: newSession.questionSetId,
           questionIndex: 0,
+          currentQuestionId: q0.id,
+          questionContent: q0.q,
+          answerOptions: q0.options,
+          questionContentHash: q0Hash,
           startTime: now,
           duration: 60,
           deadline,
@@ -266,10 +294,9 @@ export function PKActiveVoiceQuiz({
         setSessionDeadline(deadline);
         setIsLoadingSession(false);
       } else {
-        // Khách đợi phiên từ Server (polling chu kỳ 400ms)
-        let attempts = 0;
+        // Khách đợi phiên từ Server (polling liên tục chu kỳ 300ms)
+        // TUYỆT ĐỐI không fallback sang ngân hàng cục bộ để tránh lệch câu hỏi
         pollingTimer = setInterval(async () => {
-          attempts++;
           const sess = await voiceRealtimeService.getRoomSession(roomCode);
           if (sess && sess.questions && sess.questions.length > 0) {
             if (pollingTimer) clearInterval(pollingTimer);
@@ -278,16 +305,8 @@ export function PKActiveVoiceQuiz({
             setSyncedQuestions(sess.questions);
             setSessionDeadline(sess.deadline || Date.now() + 60000);
             setIsLoadingSession(false);
-          } else if (attempts > 30) {
-            // Hết 12 giây timeout, fallback dự phòng
-            if (pollingTimer) clearInterval(pollingTimer);
-            if (!isSubscribed) return;
-            const fallback = buildCanonicalQuestions();
-            setSyncedQuestions(fallback);
-            setSessionDeadline(Date.now() + 60000);
-            setIsLoadingSession(false);
           }
-        }, 400);
+        }, 300);
       }
 
       // 2. Khôi phục lịch sử phòng nếu F5 lại
@@ -301,13 +320,27 @@ export function PKActiveVoiceQuiz({
 
     if (!isRealPeer) return;
 
-    // 3. Lắng nghe các sự kiện đồng bộ realtime
+    // 3. Lắng nghe các sự kiện đồng bộ realtime (Realtime authoritative event stream)
     const unsub = voiceRealtimeService.subscribeToQuizSync(roomCode, (action) => {
       if (action.type === "init_question") {
-        if (action.questionIndex === currentQIndex) {
-          const dLine = action.deadline || ((action.startTime || action.startedAt || Date.now()) + 60000);
-          setSessionDeadline(dLine);
-          setTimeLeft(Math.max(0, Math.ceil((dLine - Date.now()) / 1000)));
+        const dLine = action.deadline || ((action.startTime || action.startedAt || Date.now()) + 60000);
+        setSessionDeadline(dLine);
+        setTimeLeft(Math.max(0, Math.ceil((dLine - Date.now()) / 1000)));
+
+        // Đảm bảo nội dung câu 0 khớp chuẩn xác với sự kiện phát đi
+        if (action.questionContent && action.answerOptions) {
+          setSyncedQuestions((prev) => {
+            const next = [...prev];
+            next[action.questionIndex] = {
+              id: action.currentQuestionId || `q-${action.questionIndex + 1}`,
+              q: action.questionContent,
+              options: action.answerOptions,
+              correct: next[action.questionIndex]?.correct ?? 0,
+              explanation: next[action.questionIndex]?.explanation ?? "",
+              topic: next[action.questionIndex]?.topic || subject.name,
+            };
+            return next;
+          });
         }
       } else if (action.type === "submit_answer") {
         if (action.questionIndex === currentQIndex) {
@@ -333,6 +366,24 @@ export function PKActiveVoiceQuiz({
           setPeerStatus("answering");
           setPeerStoredOption(null);
           hasSubmittedQRef.current = -1;
+
+          // TIÊM TRỰC TIẾP DỮ LIỆU CÂU HỎI MỚI TỪ SERVER: Bảo đảm cả 2 render cùng câu hỏi tuyệt đối
+          if (action.questionContent && action.answerOptions) {
+            setSyncedQuestions((prev) => {
+              const next = [...prev];
+              next[action.nextQuestionIndex] = {
+                id: action.currentQuestionId || `q-${action.nextQuestionIndex + 1}`,
+                q: action.questionContent,
+                options: action.answerOptions,
+                correct: action.correctAnswer ?? next[action.nextQuestionIndex]?.correct ?? 0,
+                explanation: action.explanation ?? next[action.nextQuestionIndex]?.explanation ?? "",
+                topic: next[action.nextQuestionIndex]?.topic || subject.name,
+                optionsAnalysis: action.optionsAnalysis ?? next[action.nextQuestionIndex]?.optionsAnalysis,
+                takeaway: action.takeaway ?? next[action.nextQuestionIndex]?.takeaway,
+              };
+              return next;
+            });
+          }
         }
       }
     });
@@ -342,7 +393,7 @@ export function PKActiveVoiceQuiz({
       if (pollingTimer) clearInterval(pollingTimer);
       unsub();
     };
-  }, [roomCode, currentUser.id, isHost, currentQIndex, isRealPeer]);
+  }, [roomCode, currentUser.id, isHost, isRealPeer]);
 
   // =========================================================
   // 3. VOICE & AUDIO CONNECTION STATE
@@ -614,12 +665,19 @@ export function PKActiveVoiceQuiz({
     }
   };
 
+  const currentQuestionHash = useMemo(() => {
+    return computeQuestionHash(currentQ.q, currentQ.options);
+  }, [currentQ]);
+
   const handleNextQuestion = () => {
     if (!isBothSubmitted) return; // Core Rule: Chỉ chuyển câu khi cả hai đã hoàn thành
     if (currentQIndex + 1 < questions.length) {
       const nextIdx = currentQIndex + 1;
+      const targetQ = questions[nextIdx];
       const now = Date.now();
       const newDeadline = now + 60000;
+      const qHash = computeQuestionHash(targetQ.q, targetQ.options);
+
       setCurrentQIndex(nextIdx);
       setSessionDeadline(newDeadline);
       setTimeLeft(60);
@@ -632,7 +690,18 @@ export function PKActiveVoiceQuiz({
       if (isRealPeer) {
         voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
           type: "advance_question",
+          roomId: roomCode,
+          roomSessionId: sessionData?.roomSessionId || `sess-${roomCode}`,
+          questionSetId: sessionData?.questionSetId || `qset-${subject.id}`,
           nextQuestionIndex: nextIdx,
+          currentQuestionId: targetQ.id,
+          questionContent: targetQ.q,
+          answerOptions: targetQ.options,
+          questionContentHash: qHash,
+          explanation: targetQ.explanation,
+          correctAnswer: targetQ.correct,
+          optionsAnalysis: targetQ.optionsAnalysis,
+          takeaway: targetQ.takeaway,
           startTime: now,
           duration: 60,
           deadline: newDeadline,
@@ -661,6 +730,15 @@ export function PKActiveVoiceQuiz({
           <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#7C3AED]">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span>Đang tải dữ liệu từ máy chủ...</span>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleForceResync}
+              className="px-4 py-2 bg-[#FAF8FF] border border-[#EDE9FE] text-[#7C3AED] rounded-xl text-xs font-bold hover:bg-[#EDE9FE]"
+            >
+              Thử tải lại ngay
+            </button>
           </div>
         </div>
       </div>
@@ -928,6 +1006,56 @@ export function PKActiveVoiceQuiz({
                 className="h-full bg-gradient-to-r from-[#7C3AED] to-indigo-600 rounded-full transition-all duration-300"
                 style={{ width: `${((currentQIndex + 1) / questions.length) * 100}%` }}
               />
+            </div>
+          </div>
+
+          {/* REALTIME QUESTION INTEGRITY & SYNC BAR (REQUIREMENT D) */}
+          <div className="bg-[#FAF8FF] border border-[#EDE9FE] rounded-2xl p-2.5 px-3.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <div className="flex flex-wrap items-center gap-2.5 font-mono">
+              <div className="flex items-center gap-1 text-[#77738F]">
+                <span className="font-bold text-[#17133B]">Phòng:</span>
+                <span className="font-bold text-[#7C3AED] bg-[#EDE9FE] px-1.5 py-0.5 rounded">{roomCode}</span>
+              </div>
+              <div className="flex items-center gap-1 text-[#77738F]">
+                <span className="font-bold text-[#17133B]">Phiên:</span>
+                <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                  {sessionData?.roomSessionId?.slice(-8) || "chờ..."}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-[#77738F]">
+                <span className="font-bold text-[#17133B]">Bộ câu:</span>
+                <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                  {sessionData?.questionSetId?.slice(-8) || "chờ..."}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-[#77738F]">
+                <span className="font-bold text-[#17133B]">Mã câu:</span>
+                <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                  {currentQ.id}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-[#17133B]">Hash:</span>
+                <span className="font-black text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 tracking-wider">
+                  {currentQuestionHash}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Đồng bộ máy chủ 100%</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleForceResync}
+                className="text-[10px] font-bold text-[#7C3AED] hover:text-[#6D28D9] underline flex items-center gap-0.5"
+                title="Bấm để tải lại câu hỏi từ máy chủ nếu nghi ngờ lệch dữ liệu"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Đồng bộ lại</span>
+              </button>
             </div>
           </div>
 

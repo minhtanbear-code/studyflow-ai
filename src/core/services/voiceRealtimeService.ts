@@ -73,12 +73,31 @@ export interface VoiceRoomSession {
   status: "active" | "completed";
 }
 
+export function computeQuestionHash(content: string, options: string[] = []): string {
+  const str = `${content || ""}::${(options || []).join("::")}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).toUpperCase();
+  return `#${hex.padStart(6, "0").slice(-6)}`;
+}
+
 export type PlayerQuizStatus = "answering" | "submitted" | "timeout";
 
 export type QuizSyncAction =
   | {
       type: "init_question";
+      roomId: string;
+      roomSessionId: string;
+      questionSetId: string;
       questionIndex: number;
+      currentQuestionId: string;
+      questionContent: string;
+      answerOptions: string[];
+      questionContentHash: string;
       startTime: number;
       duration: number;
       deadline: number;
@@ -102,7 +121,18 @@ export type QuizSyncAction =
     }
   | {
       type: "advance_question";
+      roomId: string;
+      roomSessionId: string;
+      questionSetId: string;
       nextQuestionIndex: number;
+      currentQuestionId: string;
+      questionContent: string;
+      answerOptions: string[];
+      questionContentHash: string;
+      explanation?: string;
+      correctAnswer?: number;
+      optionsAnalysis?: string[];
+      takeaway?: string;
       startTime: number;
       duration: number;
       deadline: number;
