@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { PKDocumentUploadScreen } from "@/components/pk/PKDocumentUploadScreen";
+import { PKDocumentAnalysisScreen } from "@/components/pk/PKDocumentAnalysisScreen";
+import { PKQuestionRecommendation } from "@/components/pk/PKQuestionRecommendation";
 import { PKSubjectSelectionScreen } from "@/components/pk/PKSubjectSelectionScreen";
 import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelectionScreen";
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
@@ -13,11 +15,26 @@ import { userService } from "@/core/services/userService";
 import { voiceRealtimeService, VoiceInvitation } from "@/core/services/voiceRealtimeService";
 import { MOCK_PK_SUBJECTS } from "@/core/data/mockPkData";
 import { PKSubject } from "@/core/domain/pk.types";
-import { UploadedDocumentFile } from "@/core/domain/documentLearning.types";
+import {
+  UploadedDocumentFile,
+  DocumentAnalysisResult,
+  AIQuestionRecommendation,
+  DocumentQuizCustomConfig,
+  GeneratedQuestionWithSource,
+} from "@/core/domain/documentLearning.types";
+import { documentAnalysisService } from "@/core/services/documentAnalysisService";
 
 export default function PKPage() {
-  const [step, setStep] = useState<"upload" | "subject" | "mode" | "friend_mode" | "voice_learning">("upload");
+  const [step, setStep] = useState<
+    "upload" | "analyzing" | "recommendation" | "subject" | "mode" | "friend_mode" | "voice_learning"
+  >("upload");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedDocumentFile[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<DocumentAnalysisResult | null>(null);
+  const [aiRecommendation, setAiRecommendation] = useState<AIQuestionRecommendation | null>(null);
+  const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestionWithSource[]>([]);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [generationSuccessInfo, setGenerationSuccessInfo] = useState<{ count: number; config: DocumentQuizCustomConfig } | null>(null);
+
   const [selectedSubject, setSelectedSubject] = useState<PKSubject>(
     MOCK_PK_SUBJECTS.find((s) => s.id === "eco101") || MOCK_PK_SUBJECTS[1]
   );
@@ -156,6 +173,40 @@ export default function PKPage() {
     setIncomingInvite(null);
   };
 
+  const handleGenerateQuestions = async (config: DocumentQuizCustomConfig) => {
+    if (!analysisResult) return;
+    setIsGeneratingQuestions(true);
+    try {
+      const generated = await documentAnalysisService.generateQuestions(
+        analysisResult,
+        config,
+        uploadedFiles[0]?.name || "Tài liệu học tập"
+      );
+      setGeneratedQuestions(generated);
+      setGenerationSuccessInfo({ count: generated.length, config });
+
+      // Lưu trữ phiên học tập vào sessionStorage
+      try {
+        sessionStorage.setItem(
+          "studyflow_doc_session",
+          JSON.stringify({
+            subject: selectedSubject,
+            analysis: analysisResult,
+            config,
+            questions: generated,
+            timestamp: Date.now(),
+          })
+        );
+      } catch (e) {
+        console.warn("Lỗi lưu sessionStorage:", e);
+      }
+    } catch (err) {
+      console.error("Lỗi tạo câu hỏi:", err);
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
+
   return (
     <>
       <PKJoinCodeModal
@@ -170,6 +221,64 @@ export default function PKPage() {
         onDecline={handleDeclineInvite}
       />
 
+      {/* MODAL THÔNG BÁO HOÀN TẤT TẠO BỘ CÂU HỎI (PHASE 2 SUCCESS) */}
+      {generationSuccessInfo && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 border border-purple-200 shadow-2xl text-center">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+              <span className="text-3xl">✨</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-xl font-black text-[#17133B]">Bộ câu hỏi đã được tạo thành công!</h3>
+              <p className="text-xs text-[#77738F] font-medium">
+                AI đã trích xuất và sinh <strong>{generationSuccessInfo.count} câu hỏi</strong> trắc nghiệm bám sát nội dung tài liệu.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-[#FAF8FF] rounded-2xl border border-[#EDE9FE] text-left text-xs space-y-1.5 font-medium text-slate-700">
+              <div className="flex justify-between">
+                <span className="text-[#77738F]">Môn học:</span>
+                <span className="font-black text-[#7C3AED]">{selectedSubject.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#77738F]">Số lượng:</span>
+                <span className="font-bold">{generationSuccessInfo.count} câu</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#77738F]">Mức độ:</span>
+                <span className="font-bold capitalize">{generationSuccessInfo.config.difficulty}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#77738F]">Trạng thái:</span>
+                <span className="text-amber-700 font-bold">AI tạo – chưa xác minh</span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setGenerationSuccessInfo(null)}
+                className="w-full py-3 px-4 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-xs shadow-md shadow-purple-200 transition-all cursor-pointer"
+              >
+                Tiếp tục xem & chỉnh sửa câu hỏi (Phase 3)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGenerationSuccessInfo(null);
+                  setStep("recommendation");
+                }}
+                className="text-xs font-bold text-[#77738F] hover:text-[#17133B] py-1 cursor-pointer"
+              >
+                Cấu hình lại bộ câu hỏi khác
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 1: VOICE LEARNING / ROOMS (Preserved) */}
       {step === "voice_learning" && selectedSubject && (
         <PKVoiceLearningContainer
           subject={selectedSubject}
@@ -181,6 +290,7 @@ export default function PKPage() {
         />
       )}
 
+      {/* STEP 2: FRIEND MODE (Preserved) */}
       {step === "friend_mode" && selectedSubject && (
         <PKFriendModeSelectionScreen
           subject={selectedSubject}
@@ -194,6 +304,7 @@ export default function PKPage() {
         />
       )}
 
+      {/* STEP 3: STUDY MODE (Preserved) */}
       {step === "mode" && selectedSubject && (
         <PKStudyModeSelectionScreen
           subject={selectedSubject}
@@ -206,6 +317,7 @@ export default function PKPage() {
         />
       )}
 
+      {/* STEP 4: MANUAL SUBJECT SELECTION (Preserved) */}
       {step === "subject" && (
         <PKSubjectSelectionScreen
           initialSubjectId={selectedSubject?.id}
@@ -220,12 +332,54 @@ export default function PKPage() {
         />
       )}
 
+      {/* NEW FLOW - STEP 2.2: AI QUESTION RECOMMENDATION & CUSTOMIZATION */}
+      {step === "recommendation" && analysisResult && aiRecommendation && (
+        <PKQuestionRecommendation
+          analysis={analysisResult}
+          recommendation={aiRecommendation}
+          onGenerate={handleGenerateQuestions}
+          onBack={() => setStep("analyzing")}
+        />
+      )}
+
+      {/* NEW FLOW - STEP 2.1: DOCUMENT ANALYSIS PROCESSING SCREEN */}
+      {step === "analyzing" && uploadedFiles.length > 0 && (
+        <PKDocumentAnalysisScreen
+          files={uploadedFiles}
+          onAnalysisComplete={(result) => {
+            setAnalysisResult(result);
+
+            // Đồng bộ môn học nếu nhận diện chính xác
+            if (result.identifiedSubjectId) {
+              const matched = MOCK_PK_SUBJECTS.find((s) => s.id === result.identifiedSubjectId);
+              if (matched) {
+                setSelectedSubject(matched);
+              }
+            } else if (result.identifiedSubjectName) {
+              const matchedByName = MOCK_PK_SUBJECTS.find(
+                (s) => s.name.toLowerCase() === result.identifiedSubjectName?.toLowerCase()
+              );
+              if (matchedByName) {
+                setSelectedSubject(matchedByName);
+              }
+            }
+
+            // Sinh đề xuất thông minh
+            const rec = documentAnalysisService.getRecommendation(result);
+            setAiRecommendation(rec);
+            setStep("recommendation");
+          }}
+          onCancel={() => setStep("upload")}
+        />
+      )}
+
+      {/* NEW FLOW - STEP 1: DOCUMENT UPLOAD UI */}
       {step === "upload" && (
         <PKDocumentUploadScreen
           onOpenJoinCode={() => setIsJoinCodeOpen(true)}
           onAnalyzeFiles={(files) => {
             setUploadedFiles(files);
-            // Phase 1: Lưu trữ danh sách file đã xác thực thành công
+            setStep("analyzing");
           }}
           onFallbackSelectSubject={() => setStep("subject")}
         />

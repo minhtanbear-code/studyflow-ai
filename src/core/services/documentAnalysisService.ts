@@ -63,8 +63,13 @@ export const documentAnalysisService = {
     // Tổng hợp nội dung từ tất cả các file
     let combinedText = "";
     for (const f of files) {
+      if (!f.extractedText && f.rawFile) {
+        f.extractedText = await this.extractTextFromFile(f.rawFile);
+      }
       if (f.extractedText) {
         combinedText += `\n--- [Tài liệu: ${f.name}] ---\n` + f.extractedText;
+      } else {
+        combinedText += `\n--- [Tài liệu: ${f.name}] ---\n${f.name}`;
       }
     }
 
@@ -80,19 +85,29 @@ export const documentAnalysisService = {
       const sCode = subj.code.toLowerCase();
 
       let matchCount = 0;
-      if (lower.includes(sName)) matchCount += 5;
-      if (lower.includes(sCode)) matchCount += 4;
+      if (lower.includes(sName)) matchCount += 6;
+      if (lower.includes(sCode)) matchCount += 5;
+
+      // Kiểm tra trong tên file
+      for (const f of files) {
+        const fnLower = f.name.toLowerCase();
+        if (fnLower.includes(sName) || fnLower.includes(sCode)) {
+          matchCount += 8;
+        }
+      }
 
       // Kiểm tra từ khóa đặc trưng theo môn
-      if (subj.id === "eco101" && (lower.includes("khan hiếm") || lower.includes("chi phí cơ hội") || lower.includes("đường ppf") || lower.includes("cung cầu") || lower.includes("co giãn") || lower.includes("thị trường"))) {
+      if (subj.id === "eco101" && (lower.includes("khan hiếm") || lower.includes("chi phí cơ hội") || lower.includes("đường ppf") || lower.includes("cung cầu") || lower.includes("co giãn") || lower.includes("thị trường") || lower.includes("vi mô"))) {
         matchCount += 8;
-      } else if (subj.id === "eco102" && (lower.includes("gdp") || lower.includes("lạm phát") || lower.includes("thất nghiệp") || lower.includes("chính sách tiền tệ"))) {
+      } else if (subj.id === "eco102" && (lower.includes("gdp") || lower.includes("lạm phát") || lower.includes("thất nghiệp") || lower.includes("chính sách tiền tệ") || lower.includes("vĩ mô"))) {
         matchCount += 8;
-      } else if (subj.id === "acc101" && (lower.includes("bảng cân đối") || lower.includes("nợ có") || lower.includes("định khoản") || lower.includes("tài sản"))) {
+      } else if (subj.id === "acc101" && (lower.includes("bảng cân đối") || lower.includes("nợ có") || lower.includes("định khoản") || lower.includes("tài sản") || lower.includes("kế toán"))) {
         matchCount += 8;
-      } else if (subj.id === "law101" && (lower.includes("quy phạm pháp luật") || lower.includes("hiến pháp") || lower.includes("bộ luật"))) {
+      } else if (subj.id === "law101" && (lower.includes("quy phạm pháp luật") || lower.includes("hiến pháp") || lower.includes("bộ luật") || lower.includes("pháp luật"))) {
         matchCount += 8;
-      } else if (subj.id === "phi101" && (lower.includes("duy vật") || lower.includes("biện chứng") || lower.includes("hình thái kinh tế"))) {
+      } else if (subj.id === "phi101" && (lower.includes("duy vật") || lower.includes("biện chứng") || lower.includes("hình thái kinh tế") || lower.includes("triết học"))) {
+        matchCount += 8;
+      } else if (subj.id === "mat101" && (lower.includes("ma trận") || lower.includes("định thức") || lower.includes("tích phân") || lower.includes("đạo hàm") || lower.includes("toán"))) {
         matchCount += 8;
       }
 
