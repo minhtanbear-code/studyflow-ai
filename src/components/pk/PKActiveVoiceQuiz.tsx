@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
+  Activity,
   AlertCircle,
   ArrowLeft,
   ArrowRight,
@@ -140,6 +141,17 @@ export function PKActiveVoiceQuiz({
   const [peerIsSpeaking, setPeerIsSpeaking] = useState(false);
   const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
   const [webrtcStats, setWebrtcStats] = useState<WebRTCVoiceStats | null>(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // Nhận diện trình duyệt thực tế đang chạy (Edge vs Chrome)
+  const currentBrowserName = useMemo(() => {
+    if (typeof window === "undefined") return "Trình duyệt";
+    const ua = navigator.userAgent;
+    if (ua.includes("Edg/")) return "Microsoft Edge";
+    if (ua.includes("Chrome/")) return "Google Chrome";
+    if (ua.includes("Firefox/")) return "Mozilla Firefox";
+    return "Trình duyệt Chromium";
+  }, []);
 
   // Dedicated DOM Audio Element ref for peer voice
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1099,8 +1111,8 @@ export function PKActiveVoiceQuiz({
               </button>
             </div>
 
-            {/* Live WebRTC Diagnostic Status */}
-            <div className="p-2.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1.5 font-medium">
+            {/* Live WebRTC Diagnostic Status Summary */}
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-[11px] text-slate-600 space-y-2 font-medium">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-bold">Kênh thoại P2P:</span>
                 <span className="font-mono text-[10px] font-black text-[#7C3AED]">
@@ -1113,12 +1125,187 @@ export function PKActiveVoiceQuiz({
                   {webrtcStats?.remoteAudioPlaying ? (
                     <span className="text-emerald-600">Đang phát loa ✓</span>
                   ) : webrtcStats?.hasRemoteAudio ? (
-                    <span className="text-blue-600">Đã nhận track</span>
+                    <span className="text-blue-600">Đã nhận track RTP</span>
                   ) : (
                     <span className="text-slate-400">Đang chờ đối tác...</span>
                   )}
                 </span>
               </div>
+
+              {/* Nút mở rộng bảng DEBUG thời gian thực */}
+              <button
+                type="button"
+                onClick={() => setShowDebugPanel(!showDebugPanel)}
+                className="w-full mt-1.5 py-1.5 px-2.5 rounded-xl border border-purple-200 bg-purple-50/80 hover:bg-purple-100 text-[#7C3AED] font-black text-[10px] flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span className="flex items-center gap-1">
+                  <Activity className="w-3 h-3 text-[#7C3AED]" />
+                  <span>Bảng DEBUG ({currentBrowserName})</span>
+                </span>
+                <span>{showDebugPanel ? "▲ Ẩn chi tiết" : "▼ Xem thông số getStats()"}</span>
+              </button>
+
+              {/* BẢNG DEBUG CHI TIẾT THEO YÊU CẦU KIỂM THỬ (EDGE vs CHROME) */}
+              {showDebugPanel && (
+                <div className="pt-2 border-t border-slate-200 space-y-2 text-[10px] animate-in fade-in duration-200 font-sans">
+                  {/* Tiêu đề & Vai trò */}
+                  <div className="p-1.5 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                    <span className="font-bold text-[#17133B]">{currentBrowserName}</span>
+                    <span className="font-black text-[#7C3AED] bg-purple-100 px-1.5 py-0.5 rounded">
+                      {isHost ? "Chủ phòng (Host)" : "Khách mời (Guest)"}
+                    </span>
+                  </div>
+
+                  {/* 1. Micro Input & TX */}
+                  <div className="p-2 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>1. Micro Gửi (TX):</span>
+                      <span className={webrtcStats?.hasLocalAudio ? "text-emerald-600" : "text-rose-600"}>
+                        {webrtcStats?.hasLocalAudio ? "LIVE ✓" : "CHƯA NHẬN"}
+                      </span>
+                    </div>
+                    <div className="truncate text-[9px] text-slate-500 font-mono" title={webrtcStats?.micDeviceLabel}>
+                      {webrtcStats?.micDeviceLabel || "Micro mặc định"}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Âm lượng mic:</span>
+                      <span className="font-mono font-bold text-slate-700">{webrtcStats?.localVolume || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-emerald-500 h-full transition-all duration-150"
+                        style={{ width: `${Math.min(100, (webrtcStats?.localVolume || 0) * 2)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500 pt-0.5">
+                      <span>Đã gửi (getStats):</span>
+                      <span className="font-mono text-[9px] font-bold text-slate-700">
+                        {Math.round((webrtcStats?.bytesSent || 0) / 1024)} KB ({webrtcStats?.packetsSent || 0} pkts)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 2. Đường truyền P2P & ICE */}
+                  <div className="p-2 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>2. Đường truyền P2P (ICE):</span>
+                      <span className="font-mono text-purple-700 font-bold">{webrtcStats?.pcState}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Kiểu kết nối:</span>
+                      <span className="font-mono text-[9px] text-slate-700 truncate max-w-[150px]">
+                        {webrtcStats?.candidateType || "Đang thiết lập..."}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Độ trễ RTT / Jitter:</span>
+                      <span className="font-mono text-slate-700">
+                        {webrtcStats?.roundTripTimeMs || 0}ms / {webrtcStats?.jitterMs || 0}ms
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. Luồng nhận từ Bạn học (RX) */}
+                  <div className="p-2 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>3. Nhận từ Bạn học (RX):</span>
+                      <span className={webrtcStats?.remoteAudioLive ? "text-emerald-600" : "text-amber-600"}>
+                        {webrtcStats?.remoteAudioLive ? "LIVE ✓" : "CHỜ PACKETS"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Đã nhận (getStats):</span>
+                      <span className="font-mono text-[9px] font-bold text-slate-700">
+                        {Math.round((webrtcStats?.bytesReceived || 0) / 1024)} KB ({webrtcStats?.packetsReceived || 0} pkts)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Gói tin rơi (Lost):</span>
+                      <span className="font-mono text-slate-700">{webrtcStats?.packetsLost || 0} pkts</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Âm lượng đối phương:</span>
+                      <span className="font-mono font-bold text-slate-700">{webrtcStats?.remoteVolume || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-blue-500 h-full transition-all duration-150"
+                        style={{ width: `${Math.min(100, (webrtcStats?.remoteVolume || 0) * 2)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4. Loa & Playback */}
+                  <div className="p-2 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-700">
+                      <span>4. Phát ra Loa (Playback):</span>
+                      <span className={webrtcStats?.remoteAudioPlaying ? "text-emerald-600" : "text-amber-600"}>
+                        {webrtcStats?.remoteAudioPlaying ? "ĐANG PHÁT ✓" : "CHƯA PHÁT"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Thẻ &lt;audio&gt; DOM:</span>
+                      <span className="font-mono text-[9px] text-slate-700">
+                        paused: {String(webrtcStats?.audioElementPaused)} | mute: {String(webrtcStats?.audioElementMuted)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Thời gian phát thực:</span>
+                      <span className="font-mono text-slate-700">
+                        {(webrtcStats?.audioElementCurrentTime || 0).toFixed(1)}s (đang tăng)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Autoplay Trình duyệt:</span>
+                      <span className={webrtcStats?.autoplayBlocked ? "text-rose-600 font-bold" : "text-emerald-600"}>
+                        {webrtcStats?.autoplayBlocked ? "BỊ CHẶN ⚠️" : "CHO PHÉP ✓"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-500">
+                      <span>Kênh phát ra loa:</span>
+                      <span className="font-bold text-[#7C3AED]">
+                        {webrtcStats?.webAudioDirectActive ? "Web Audio (Trực tiếp)" : "HTMLAudioElement"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3 Nút xử lý chẩn đoán trực tiếp */}
+                  <div className="space-y-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => webrtcManagerRef.current?.playTestBeep()}
+                      className="w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      <span>🔊 Test Loa Máy Này (Phát tiếng bíp)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        webrtcManagerRef.current?.toggleWebAudioDirectOutput();
+                      }}
+                      className="w-full py-1.5 px-2 bg-purple-50 hover:bg-purple-100 text-[#7C3AED] rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>
+                        {webrtcStats?.webAudioDirectActive
+                          ? "⚡ Chuyển lại Loa Thẻ Audio"
+                          : "⚡ Bật Web Audio Direct Play (Dự phòng)"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => webrtcManagerRef.current?.unlockAudio()}
+                      className="w-full py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg font-bold text-[10px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <VolumeX className="w-3 h-3" />
+                      <span>🔓 Buộc Mở Khóa Loa (User Gesture)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button

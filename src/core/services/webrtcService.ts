@@ -1,9 +1,9 @@
 // ==============================================================================
 // STUDYFLOW AI - REAL WEBRTC VOICE 1V1 STREAMING SERVICE
 // ==============================================================================
-// Kết nối âm thanh ngang hàng (P2P) giữa 2 thiết bị độc lập.
+// Kết nối âm thanh ngang hàng (P2P) giữa 2 thiết bị độc lập hoặc 2 trình duyệt trên cùng máy.
 // Hỗ trợ đàm thoại 2 chiều thực tế không qua máy chủ trung gian (P2P Mesh).
-// STUN/TURN relays chuẩn hóa vượt tường lửa NAT/4G/WiFi trường đại học.
+// STUN/TURN relays chuẩn hóa vượt tường lửa NAT/4G/WiFi trường đại học/Localhost.
 // ==============================================================================
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zvnmnbhoywksqhjjifff.supabase.co";
@@ -17,7 +17,7 @@ const RTC_CONFIG: RTCConfiguration = {
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
     { urls: "stun:stun.services.mozilla.com" },
-    // Public WebRTC STUN/TURN relays to punch through 4G CGNAT and campus firewalls
+    // Public WebRTC STUN/TURN relays to punch through 4G CGNAT, localhost loopback and firewalls
     { urls: "stun:stun.relay.metered.ca:80" },
   ],
   iceCandidatePoolSize: 10,
@@ -34,6 +34,29 @@ export interface WebRTCVoiceStats {
   autoplayBlocked: boolean;
   localVolume: number;
   remoteVolume: number;
+
+  // Real-time Network & RTP stats from RTCPeerConnection.getStats()
+  bytesSent: number;
+  packetsSent: number;
+  bytesReceived: number;
+  packetsReceived: number;
+  packetsLost: number;
+  jitterMs: number;
+  roundTripTimeMs: number;
+  candidateType: string;
+  selectedCandidatePair: string;
+  inboundAudioEnergy: number; // 0.0 - 1.0 from getStats
+  outboundAudioEnergy: number; // 0.0 - 1.0 from getStats
+
+  // Hardware Audio Devices & Playback State
+  micDeviceLabel: string;
+  micMuted: boolean;
+  audioElementPaused: boolean;
+  audioElementMuted: boolean;
+  audioElementVolume: number;
+  audioElementCurrentTime: number;
+  audioElementReadyState: number;
+  webAudioDirectActive: boolean;
 }
 
 export class WebRTCVoiceManager {
@@ -46,6 +69,7 @@ export class WebRTCVoiceManager {
   private role: "host" | "guest" = "host";
   private mySenderId: string = "";
   private signalInterval: NodeJS.Timeout | null = null;
+  private statsInterval: NodeJS.Timeout | null = null;
   private isClosed: boolean = false;
   private sessionStartTime: string = "";
 
@@ -64,6 +88,20 @@ export class WebRTCVoiceManager {
   private currentRemoteVolume: number = 0;
   private isAudioElementPlaying: boolean = false;
   private isAutoplayBlockedState: boolean = false;
+  private isWebAudioDirectOutputActive: boolean = false;
+
+  // Cache for getStats values
+  private rtpBytesSent: number = 0;
+  private rtpPacketsSent: number = 0;
+  private rtpBytesReceived: number = 0;
+  private rtpPacketsReceived: number = 0;
+  private rtpPacketsLost: number = 0;
+  private rtpJitterMs: number = 0;
+  private rtpRttMs: number = 0;
+  private rtpCandidateType: string = "Đang dò tìm...";
+  private rtpSelectedCandidatePair: string = "Chưa kết nối";
+  private rtpInboundAudioEnergy: number = 0;
+  private rtpOutboundAudioEnergy: number = 0;
 
   // Callbacks
   public onLocalSpeaking?: (volume: number) => void;
@@ -100,21 +138,141 @@ export class WebRTCVoiceManager {
     console.error(`${rolePrefix} ❌ [${tag}]`, ...args);
   }
 
+  /**
+   * Phát tiếng chuông kiểm tra loa (Audio Chime Test) trực tiếp qua Web Audio
+   * Giúp người dùng xác minh 100% loa của trình duyệt đó đang phát ra loa Windows bình thường
+   */
+  playTestBeep(): void {
+    try {
+      this.log("TestBeep", "Phát âm thanh kiểm tra loa của trình duyệt...");
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      // Nốt D5 (587.33Hz) trượt lên A5 (880Hz)
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.6);
+      setTimeout(() => {
+        if (ctx.state !== "closed") ctx.close().catch(() => {});
+      }, 700);
+    } catch (e) {
+      this.warn("TestBeepError", "Không thể phát âm thanh test:", e);
+    }
+  }
+
+  /**
+   * Bật/Tắt phát trực tiếp qua Web Audio Engine (Bỏ qua thẻ HTMLAudioElement nếu bị trình duyệt chặn)
+   */
+  toggleWebAudioDirectOutput(forceState?: boolean): boolean {
+    const target = forceState !== undefined ? forceState : !this.isWebAudioDirectOutputActive;
+    this.isWebAudioDirectOutputActive = target;
+    this.log("WebAudioDirect", `Chế độ phát trực tiếp qua Web Audio Engine: ${target ? "BẬT" : "TẮT"}`);
+
+    if (this.audioContext && this.audioContext.state === "suspended") {
+      this.audioContext.resume().catch(() => {});
+    }
+
+    if (this.remoteGainNode) {
+      this.remoteGainNode.gain.value = target ? 1.0 : 0.0;
+    }
+
+    if (target) {
+      this.isAudioElementPlaying = true;
+      this.isAutoplayBlockedState = false;
+      this.onRemoteAudioPlaying?.();
+      this.onAutoplayBlocked?.(false);
+    }
+
+    this.broadcastStats();
+    return this.isWebAudioDirectOutputActive;
+  }
+
+  /**
+   * Truy vấn số liệu thống kê chi tiết thời gian thực qua RTCPeerConnection.getStats()
+   */
+  private async collectRtpStats(): Promise<void> {
+    if (!this.peerConnection || this.isClosed) return;
+    try {
+      const stats = await this.peerConnection.getStats();
+
+      stats.forEach((report: any) => {
+        if (report.type === "outbound-rtp" && report.kind === "audio") {
+          this.rtpBytesSent = report.bytesSent || 0;
+          this.rtpPacketsSent = report.packetsSent || 0;
+        } else if (report.type === "inbound-rtp" && report.kind === "audio") {
+          this.rtpBytesReceived = report.bytesReceived || 0;
+          this.rtpPacketsReceived = report.packetsReceived || 0;
+          this.rtpPacketsLost = report.packetsLost || 0;
+          this.rtpJitterMs = Math.round((report.jitter || 0) * 1000);
+          this.rtpInboundAudioEnergy = typeof report.audioLevel === "number" ? report.audioLevel : 0;
+        } else if (report.type === "media-source" && report.kind === "audio") {
+          this.rtpOutboundAudioEnergy = typeof report.audioLevel === "number" ? report.audioLevel : 0;
+        } else if (report.type === "candidate-pair" && (report.selected || report.state === "succeeded")) {
+          this.rtpRttMs = Math.round((report.currentRoundTripTime || 0) * 1000);
+          const localCand = stats.get(report.localCandidateId);
+          const remoteCand = stats.get(report.remoteCandidateId);
+          if (localCand && remoteCand) {
+            this.rtpCandidateType = `${localCand.candidateType || "host"} ➔ ${remoteCand.candidateType || "host"}`;
+            this.rtpSelectedCandidatePair = `${localCand.ip || localCand.address || "local"}:${localCand.port} ➔ ${remoteCand.ip || remoteCand.address || "peer"}:${remoteCand.port}`;
+          }
+        }
+      });
+
+      this.broadcastStats();
+    } catch {
+      // Ignored
+    }
+  }
+
   private broadcastStats(): void {
     if (!this.onStatsUpdate) return;
     const pc = this.peerConnection;
+    const localTrack = this.localStream?.getAudioTracks()[0];
     const remoteTrack = this.remoteStream?.getAudioTracks()[0];
+    const el = this.audioElement;
+
     this.onStatsUpdate({
       pcState: pc?.connectionState || "closed",
       iceState: pc?.iceConnectionState || "closed",
       signalingState: pc?.signalingState || "closed",
-      hasLocalAudio: Boolean(this.localStream && this.localStream.getAudioTracks().length > 0),
+      hasLocalAudio: Boolean(localTrack && localTrack.readyState === "live"),
       hasRemoteAudio: Boolean(remoteTrack),
       remoteAudioLive: Boolean(remoteTrack && remoteTrack.readyState === "live" && remoteTrack.enabled),
-      remoteAudioPlaying: this.isAudioElementPlaying,
+      remoteAudioPlaying: this.isAudioElementPlaying || this.isWebAudioDirectOutputActive,
       autoplayBlocked: this.isAutoplayBlockedState,
       localVolume: Math.round(this.currentLocalVolume),
       remoteVolume: Math.round(this.currentRemoteVolume),
+
+      bytesSent: this.rtpBytesSent,
+      packetsSent: this.rtpPacketsSent,
+      bytesReceived: this.rtpBytesReceived,
+      packetsReceived: this.rtpPacketsReceived,
+      packetsLost: this.rtpPacketsLost,
+      jitterMs: this.rtpJitterMs,
+      roundTripTimeMs: this.rtpRttMs,
+      candidateType: this.rtpCandidateType,
+      selectedCandidatePair: this.rtpSelectedCandidatePair,
+      inboundAudioEnergy: this.rtpInboundAudioEnergy,
+      outboundAudioEnergy: this.rtpOutboundAudioEnergy,
+
+      micDeviceLabel: localTrack?.label || "Micro mặc định (Windows)",
+      micMuted: Boolean(localTrack?.muted),
+      audioElementPaused: el ? el.paused : true,
+      audioElementMuted: el ? el.muted : false,
+      audioElementVolume: el ? el.volume : 1.0,
+      audioElementCurrentTime: el ? el.currentTime : 0,
+      audioElementReadyState: el ? el.readyState : 0,
+      webAudioDirectActive: this.isWebAudioDirectOutputActive,
     });
   }
 
@@ -150,6 +308,7 @@ export class WebRTCVoiceManager {
       this.log("Start", `Bắt đầu phiên đàm thoại Voice P2P. ID người gửi: ${this.mySenderId}`);
 
       // 1. Xin quyền Microphone thực tế với cấu hình tối ưu đàm thoại học tập
+      // Tắt autoGainControl và echoCancellation nếu test trên cùng một máy để tránh bị dập âm thanh
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -158,7 +317,8 @@ export class WebRTCVoiceManager {
         },
       });
 
-      this.log("Microphone", "Đã cấp quyền mic thành công. Số track:", this.localStream.getAudioTracks().length);
+      const track = this.localStream.getAudioTracks()[0];
+      this.log("Microphone", `Đã mở mic: "${track?.label}", readyState=${track?.readyState}, enabled=${track?.enabled}`);
 
       // 2. Tạo hoặc lấy phần tử Audio gắn vào DOM nếu React component chưa kịp truyền
       if (!this.audioElement) {
@@ -188,10 +348,10 @@ export class WebRTCVoiceManager {
       this.peerConnection = new RTCPeerConnection(RTC_CONFIG);
 
       // Thêm các audio track cục bộ vào kết nối
-      this.localStream.getAudioTracks().forEach((track) => {
+      this.localStream.getAudioTracks().forEach((t) => {
         if (this.peerConnection && this.localStream) {
-          this.log("TrackAdd", `Thêm local audio track vào PeerConnection: id=${track.id}, label=${track.label}`);
-          this.peerConnection.addTrack(track, this.localStream);
+          this.log("TrackAdd", `Thêm local audio track vào PeerConnection: id=${t.id}, label=${t.label}`);
+          this.peerConnection.addTrack(t, this.localStream);
         }
       });
 
@@ -206,48 +366,48 @@ export class WebRTCVoiceManager {
           streamsCount: event.streams?.length,
         });
 
-        const track = event.track;
-        if (!track || track.kind !== "audio") {
-          this.warn("ontrack", "Track nhận được không phải là audio track:", track?.kind);
+        const rTrack = event.track;
+        if (!rTrack || rTrack.kind !== "audio") {
+          this.warn("ontrack", "Track nhận được không phải là audio track:", rTrack?.kind);
           return;
         }
 
         this.log(
           "ontrack",
-          `Thông số Track: id=${track.id}, kind=${track.kind}, readyState=${track.readyState}, enabled=${track.enabled}, muted=${track.muted}`
+          `Thông số Track: id=${rTrack.id}, kind=${rTrack.kind}, readyState=${rTrack.readyState}, enabled=${rTrack.enabled}, muted=${rTrack.muted}`
         );
 
         // Kích hoạt track
-        track.enabled = true;
+        rTrack.enabled = true;
 
         // Xây dựng MediaStream
         let stream: MediaStream;
         if (event.streams && event.streams[0]) {
           stream = event.streams[0];
           this.log("Stream", `Sử dụng stream từ event: id=${stream.id}, tracks=${stream.getAudioTracks().length}`);
-          if (!stream.getAudioTracks().includes(track)) {
-            stream.addTrack(track);
+          if (!stream.getAudioTracks().includes(rTrack)) {
+            stream.addTrack(rTrack);
           }
         } else {
           this.log("Stream", "event.streams rỗng, bọc track vào MediaStream mới.");
-          stream = new MediaStream([track]);
+          stream = new MediaStream([rTrack]);
         }
 
         this.remoteStream = stream;
 
         // Lắng nghe sự kiện của track
-        track.onmute = () => {
+        rTrack.onmute = () => {
           this.warn("TrackState", "Track bị mute mạng (đang chờ gói RTP truyền đến...)");
           this.broadcastStats();
         };
 
-        track.onunmute = () => {
+        rTrack.onunmute = () => {
           this.log("TrackState", "🎉 TRACK ĐÃ UNMUTE! Gói tin âm thanh đang truyền đến loa. Kích hoạt phát ngay...");
           this.playAudioElement();
           this.broadcastStats();
         };
 
-        track.onended = () => {
+        rTrack.onended = () => {
           this.warn("TrackState", "Remote audio track đã kết thúc.");
           this.broadcastStats();
         };
@@ -308,6 +468,11 @@ export class WebRTCVoiceManager {
 
       // 6. Bắt đầu lắng nghe tín hiệu Signaling từ Supabase (mỗi 500ms)
       this.startSignalPolling();
+
+      // 7. Bắt đầu thu thập số liệu RTP qua getStats (mỗi 800ms)
+      this.statsInterval = setInterval(() => {
+        this.collectRtpStats();
+      }, 800);
 
       this.broadcastStats();
       return true;
@@ -455,8 +620,8 @@ export class WebRTCVoiceManager {
   setMicEnabled(enabled: boolean): void {
     this.log("MicToggle", `Microphone của bạn: ${enabled ? "BẬT" : "TẮT"}`);
     if (this.localStream) {
-      this.localStream.getAudioTracks().forEach((track) => {
-        track.enabled = enabled;
+      this.localStream.getAudioTracks().forEach((t) => {
+        t.enabled = enabled;
       });
     }
     // Xác thực an toàn: remote audio element không bị mute
@@ -476,7 +641,7 @@ export class WebRTCVoiceManager {
       this.audioElement.volume = enabled ? 1.0 : 0.0;
     }
     if (this.remoteGainNode) {
-      this.remoteGainNode.gain.value = enabled ? 1.0 : 0.0;
+      this.remoteGainNode.gain.value = enabled ? (this.isWebAudioDirectOutputActive ? 1.0 : 0.0) : 0.0;
     }
     this.broadcastStats();
   }
@@ -519,6 +684,7 @@ export class WebRTCVoiceManager {
       this.remoteGainNode.gain.value = 1.0;
       this.isAudioElementPlaying = true;
       this.isAutoplayBlockedState = false;
+      this.isWebAudioDirectOutputActive = true;
       this.onAutoplayBlocked?.(false);
       this.onRemoteAudioPlaying?.();
       success = true;
@@ -628,7 +794,7 @@ export class WebRTCVoiceManager {
 
       // Web Audio GainNode dự phòng
       this.remoteGainNode = this.audioContext.createGain();
-      this.remoteGainNode.gain.value = 0.0;
+      this.remoteGainNode.gain.value = this.isWebAudioDirectOutputActive ? 1.0 : 0.0;
       source.connect(this.remoteGainNode);
       this.remoteGainNode.connect(this.audioContext.destination);
 
@@ -776,7 +942,7 @@ export class WebRTCVoiceManager {
             await this.addCandidate(sig.payload);
           }
         }
-      } catch (e) {
+      } catch {
         // Silent polling error
       }
     }, 500);
@@ -792,6 +958,10 @@ export class WebRTCVoiceManager {
       clearInterval(this.signalInterval);
       this.signalInterval = null;
     }
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
     if (this.localStream) {
       this.localStream.getTracks().forEach((t) => t.stop());
       this.localStream = null;
@@ -806,7 +976,7 @@ export class WebRTCVoiceManager {
     if (this.remoteGainNode) {
       try {
         this.remoteGainNode.disconnect();
-      } catch (e) {}
+      } catch {}
       this.remoteGainNode = null;
     }
     if (this.peerConnection) {
