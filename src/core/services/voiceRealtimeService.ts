@@ -47,6 +47,37 @@ export interface VoiceInvitation {
   created_at?: string;
 }
 
+export type PlayerQuizStatus = "answering" | "submitted" | "timeout";
+
+export type QuizSyncAction =
+  | {
+      type: "init_question";
+      questionIndex: number;
+      startedAt: number;
+      durationSeconds: number;
+    }
+  | {
+      type: "select_option";
+      questionIndex: number;
+      userId: string;
+      optionIndex: number | null;
+    }
+  | {
+      type: "submit_answer";
+      questionIndex: number;
+      userId: string;
+      userName: string;
+      optionIndex: number | null;
+      isCorrect: boolean;
+      status: "submitted" | "timeout";
+    }
+  | {
+      type: "advance_question";
+      nextQuestionIndex: number;
+      startedAt: number;
+      durationSeconds: number;
+    };
+
 export const voiceRealtimeService = {
   /**
    * Tạo phòng Voice mới trên Supabase
@@ -341,6 +372,109 @@ export const voiceRealtimeService = {
 
     poll();
     const interval = setInterval(poll, 1000);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  },
+
+  /**
+   * Phát sự kiện đồng bộ câu hỏi thời gian thực (Supabase Database as Single Source of Truth)
+   */
+  async broadcastQuizSyncAction(
+    roomCode: string,
+    senderId: string,
+    action: QuizSyncAction
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/webrtc_signals`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          room_code: roomCode.trim().toUpperCase(),
+          sender_id: senderId,
+          type: "quiz_sync",
+          payload: action,
+        }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Lấy toàn bộ lịch sử đồng bộ câu hỏi của phòng (phục hồi chính xác khi reload trang / kết nối lại)
+   */
+  async getQuizSyncHistory(
+    roomCode: string
+  ): Promise<Array<{ id: string; sender_id: string; payload: QuizSyncAction; created_at: string }>> {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(
+          roomCode.trim().toUpperCase()
+        )}&type=eq.quiz_sync&order=created_at.asc`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+      if (res.ok) {
+        return await res.json();
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Lắng nghe liên tục các sự kiện đồng bộ câu hỏi thời gian thực (chu kỳ 500ms)
+   */
+  subscribeToQuizSync(
+    roomCode: string,
+    onAction: (action: QuizSyncAction, senderId: string, createdAt: string) => void
+  ): () => void {
+    let isActive = true;
+    const processedIds = new Set<string>();
+
+    const poll = async () => {
+      if (!isActive) return;
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(
+            roomCode.trim().toUpperCase()
+          )}&type=eq.quiz_sync&order=created_at.asc`,
+          {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+          }
+        );
+        if (res.ok && isActive) {
+          const list: Array<{ id: string; sender_id: string; payload: QuizSyncAction; created_at: string }> =
+            await res.json();
+          for (const item of list) {
+            if (!processedIds.has(item.id)) {
+              processedIds.add(item.id);
+              onAction(item.payload, item.sender_id, item.created_at);
+            }
+          }
+        }
+      } catch {}
+    };
+
+    poll();
+    const interval = setInterval(poll, 500);
 
     return () => {
       isActive = false;

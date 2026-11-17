@@ -35,7 +35,11 @@ import { PKSubject } from "@/core/domain/pk.types";
 import { getQuestionsBySubject, QuizQuestion } from "@/core/data/quizQuestions";
 import { soundEffects } from "@/core/services/soundEffects.service";
 import { userService } from "@/core/services/userService";
-import { voiceRealtimeService } from "@/core/services/voiceRealtimeService";
+import {
+  voiceRealtimeService,
+  PlayerQuizStatus,
+  QuizSyncAction,
+} from "@/core/services/voiceRealtimeService";
 import { WebRTCVoiceManager, WebRTCVoiceStats } from "@/core/services/webrtcService";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
 
@@ -81,22 +85,35 @@ export function PKActiveVoiceQuiz({
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
 
+  // Mốc thời gian bắt đầu câu hỏi đồng bộ (Server Timestamp)
+  const [questionStartedAt, setQuestionStartedAt] = useState<number>(Date.now());
+
   // =========================================================
   // 1. PLAYER 1 (USER) STATE
   // =========================================================
+  const [userStatus, setUserStatus] = useState<PlayerQuizStatus>("answering");
   const [userSelectedOption, setUserSelectedOption] = useState<number | null>(null);
-  const [userSubmitted, setUserSubmitted] = useState<boolean>(false);
   const [userScoreCount, setUserScoreCount] = useState(0);
 
   // =========================================================
   // 2. PLAYER 2 (FRIEND) STATE
   // =========================================================
-  const [peerStatus, setPeerStatus] = useState<
-    "dang_suy_nghi" | "dang_noi" | "da_chot"
-  >("dang_suy_nghi");
-  const [peerSelectedOption, setPeerSelectedOption] = useState<number | null>(null);
-  const [peerSubmitted, setPeerSubmitted] = useState<boolean>(false);
+  const [peerStatus, setPeerStatus] = useState<PlayerQuizStatus>("answering");
+  const [peerStoredOption, setPeerStoredOption] = useState<number | null>(null);
   const [peerScoreCount, setPeerScoreCount] = useState(0);
+
+  // Guards chống gửi đáp án hoặc chuyển câu trùng lặp (Idempotency)
+  const hasSubmittedQRef = useRef<number>(-1);
+
+  // Cả hai người phải hoàn thành mới mở khóa đáp án (submitted hoặc timeout)
+  const isBothSubmitted =
+    (userStatus === "submitted" || userStatus === "timeout") &&
+    (peerStatus === "submitted" || peerStatus === "timeout");
+
+  // Quy tắc cốt lõi: Không tiết lộ đáp án bạn chọn trước khi cả hai hoàn thành
+  const peerSelectedOption = isBothSubmitted ? peerStoredOption : null;
+  const userSubmitted = userStatus === "submitted" || userStatus === "timeout";
+  const peerSubmitted = peerStatus === "submitted" || peerStatus === "timeout";
 
   // Current user identity & partner states
   const currentUser = userService.getCurrentUser();
@@ -105,28 +122,122 @@ export function PKActiveVoiceQuiz({
   const [partnerLeft, setPartnerLeft] = useState(false);
   const webrtcManagerRef = useRef<WebRTCVoiceManager | null>(null);
 
-  // Lắng nghe đồng bộ thao tác làm bài (chọn đáp án, chốt câu) từ bạn học thật
+  // Tái thiết lập trạng thái từ lịch sử phòng (phục hồi khi F5 / reconnect)
+  const reconstructStateFromHistory = (
+    history: Array<{ id: string; sender_id: string; payload: QuizSyncAction; created_at: string }>
+  ) => {
+    let maxQ = 0;
+    let startedTime = Date.now();
+    let uScore = 0;
+    let pScore = 0;
+    let uStatus: PlayerQuizStatus = "answering";
+    let uOpt: number | null = null;
+    let pStatus: PlayerQuizStatus = "answering";
+    let pOpt: number | null = null;
+
+    for (const item of history) {
+      const act = item.payload;
+      if (act.type === "init_question" || act.type === "advance_question") {
+        const qIdx = act.type === "init_question" ? act.questionIndex : act.nextQuestionIndex;
+        if (qIdx >= maxQ) {
+          maxQ = qIdx;
+          startedTime = act.startedAt || new Date(item.created_at).getTime();
+          uStatus = "answering";
+          uOpt = null;
+          pStatus = "answering";
+          pOpt = null;
+        }
+      } else if (act.type === "submit_answer") {
+        if (act.questionIndex === maxQ) {
+          if (act.userId === currentUser.id) {
+            uStatus = act.status;
+            uOpt = act.optionIndex;
+            if (act.isCorrect) uScore++;
+          } else {
+            pStatus = act.status;
+            pOpt = act.optionIndex;
+            if (act.isCorrect) pScore++;
+          }
+        } else if (act.questionIndex < maxQ) {
+          if (act.userId === currentUser.id && act.isCorrect) uScore++;
+          if (act.userId !== currentUser.id && act.isCorrect) pScore++;
+        }
+      }
+    }
+
+    setCurrentQIndex(maxQ);
+    setQuestionStartedAt(startedTime);
+    setUserStatus(uStatus);
+    setUserSelectedOption(uOpt);
+    setUserScoreCount(uScore);
+    setPeerStatus(pStatus);
+    setPeerStoredOption(pOpt);
+    setPeerScoreCount(pScore);
+
+    const elapsed = Math.floor((Date.now() - startedTime) / 1000);
+    setTimeLeft(Math.max(0, 60 - elapsed));
+  };
+
+  // Lắng nghe đồng bộ câu hỏi thời gian thực và khôi phục khi tải lại trang
   useEffect(() => {
+    // 1. Phục hồi trạng thái phòng từ server
+    voiceRealtimeService.getQuizSyncHistory(roomCode).then((history) => {
+      if (history && history.length > 0) {
+        reconstructStateFromHistory(history);
+      } else if (isHost) {
+        const now = Date.now();
+        setQuestionStartedAt(now);
+        setTimeLeft(60);
+        voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+          type: "init_question",
+          questionIndex: 0,
+          startedAt: now,
+          durationSeconds: 60,
+        });
+      }
+    });
+
     if (!isRealPeer) return;
 
-    const unsub = voiceRealtimeService.subscribeToQuizActions(roomCode, currentUser.id, (action) => {
-      if (action.type === "select" && action.questionIndex === currentQIndex) {
-        setPeerSelectedOption(action.optionIndex ?? null);
-        setPeerStatus("dang_suy_nghi");
-      } else if (action.type === "submit" && action.questionIndex === currentQIndex) {
-        setPeerSelectedOption(action.optionIndex ?? null);
-        setPeerSubmitted(true);
-        setPeerStatus("da_chot");
-        if (action.isCorrect) {
-          setPeerScoreCount((prev) => prev + 1);
+    // 2. Lắng nghe liên tục các sự kiện realtime
+    const unsub = voiceRealtimeService.subscribeToQuizSync(roomCode, (action, senderId, createdAt) => {
+      if (action.type === "init_question") {
+        if (action.questionIndex === currentQIndex) {
+          const sAt = action.startedAt || new Date(createdAt).getTime();
+          setQuestionStartedAt(sAt);
+          const elapsed = Math.floor((Date.now() - sAt) / 1000);
+          setTimeLeft(Math.max(0, action.durationSeconds - elapsed));
         }
-      } else if (action.type === "next_question" && action.questionIndex > currentQIndex) {
-        setCurrentQIndex(action.questionIndex);
+      } else if (action.type === "submit_answer") {
+        if (action.questionIndex === currentQIndex) {
+          if (action.userId === currentUser.id) {
+            setUserStatus(action.status);
+            setUserSelectedOption(action.optionIndex);
+          } else {
+            setPeerStatus(action.status);
+            setPeerStoredOption(action.optionIndex);
+            if (action.isCorrect) {
+              setPeerScoreCount((prev) => prev + 1);
+            }
+          }
+        }
+      } else if (action.type === "advance_question") {
+        if (action.nextQuestionIndex > currentQIndex) {
+          setCurrentQIndex(action.nextQuestionIndex);
+          const sAt = action.startedAt || new Date(createdAt).getTime();
+          setQuestionStartedAt(sAt);
+          setTimeLeft(action.durationSeconds || 60);
+          setUserStatus("answering");
+          setUserSelectedOption(null);
+          setPeerStatus("answering");
+          setPeerStoredOption(null);
+          hasSubmittedQRef.current = -1;
+        }
       }
     });
 
     return () => unsub();
-  }, [roomCode, currentUser.id, currentQIndex, isRealPeer]);
+  }, [roomCode, currentUser.id, isHost, currentQIndex, isRealPeer]);
 
   // =========================================================
   // 3. VOICE & AUDIO CONNECTION STATE
@@ -215,8 +326,7 @@ export function PKActiveVoiceQuiz({
     };
   }, [roomCode, isHost, currentUser.id]);
 
-  // Both players submitted => Reveal Answer Stage
-  const isBothSubmitted = userSubmitted && peerSubmitted;
+  // Both players submitted => Reveal Answer Stage (Đã định nghĩa ở trên)
   const isFinishedAll = currentQIndex >= questions.length - 1 && isBothSubmitted;
 
   // Gentle Background Music Lifecycle Effect (Volume nhẹ nhàng, không lấn át đàm thoại)
@@ -249,49 +359,73 @@ export function PKActiveVoiceQuiz({
     }
   }, [isBothSubmitted, isMusicOn, userSelectedOption, peerSelectedOption, currentQ]);
 
-  // Countdown Timer Effect with subtle tick
+  // Countdown Timer Effect with subtle tick & synchronized server timestamp
   useEffect(() => {
     if (isBothSubmitted) return;
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 4 && prev > 1 && isMusicOn) {
-          soundEffects.playTick();
-        }
-        if (prev <= 1) {
-          // Time out => auto confirm current selection
-          if (!userSubmitted) setUserSubmitted(true);
-          if (!peerSubmitted) {
-            setPeerSubmitted(true);
-            setPeerStatus("da_chot");
+      const elapsed = Math.floor((Date.now() - questionStartedAt) / 1000);
+      const remaining = Math.max(0, 60 - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining <= 4 && remaining > 1 && isMusicOn) {
+        soundEffects.playTick();
+      }
+
+      if (remaining <= 0) {
+        // Time out => auto timeout for current user if still answering
+        if (userStatus === "answering" && hasSubmittedQRef.current !== currentQIndex) {
+          hasSubmittedQRef.current = currentQIndex;
+          setUserStatus("timeout");
+          if (isRealPeer) {
+            voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+              type: "submit_answer",
+              questionIndex: currentQIndex,
+              userId: currentUser.id,
+              userName: currentUser.fullName,
+              optionIndex: userSelectedOption,
+              isCorrect: userSelectedOption !== null && userSelectedOption === currentQ.correct,
+              status: "timeout",
+            });
           }
-          return 0;
         }
-        return prev - 1;
-      });
+        if (!isRealPeer && peerStatus === "answering") {
+          setPeerStatus("timeout");
+        }
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isBothSubmitted, userSubmitted, peerSubmitted, isMusicOn]);
+  }, [
+    isBothSubmitted,
+    questionStartedAt,
+    userStatus,
+    peerStatus,
+    currentQIndex,
+    userSelectedOption,
+    currentQ,
+    isRealPeer,
+    roomCode,
+    currentUser.id,
+    isMusicOn,
+  ]);
 
   // Question Reset Effect
   useEffect(() => {
+    // Reset local selection and status guards for new question
     setUserSelectedOption(null);
-    setUserSubmitted(false);
-    setPeerSelectedOption(null);
-    setPeerSubmitted(false);
-    setPeerStatus("dang_suy_nghi");
-    setTimeLeft(60);
+    setUserStatus("answering");
+    setPeerStoredOption(null);
+    setPeerStatus("answering");
+    hasSubmittedQRef.current = -1;
 
     // Nếu đấu với người thật, không chạy timer mô phỏng bot
     if (!isRealPeer) {
       // Peer simulated voice discussion timeline (chỉ dùng khi đấu với Bot)
       const peerSpeakTimer = setTimeout(() => {
         setPeerIsSpeaking(true);
-        setPeerStatus("dang_noi");
 
         setTimeout(() => {
           setPeerIsSpeaking(false);
-          setPeerStatus("dang_suy_nghi");
         }, 4000);
 
         // Peer selects realistic answer
@@ -301,12 +435,11 @@ export function PKActiveVoiceQuiz({
           ? correctIdx
           : (correctIdx + 1) % currentQ.options.length;
 
-        setPeerSelectedOption(peerPick);
+        setPeerStoredOption(peerPick);
 
         // Peer confirms after discussion
         const peerConfirmTimer = setTimeout(() => {
-          setPeerSubmitted(true);
-          setPeerStatus("da_chot");
+          setPeerStatus("submitted");
           if (peerPick === correctIdx) {
             setPeerScoreCount((prev) => prev + 1);
           }
@@ -317,7 +450,7 @@ export function PKActiveVoiceQuiz({
 
       return () => clearTimeout(peerSpeakTimer);
     }
-  }, [currentQIndex, currentQ]);
+  }, [currentQIndex, isRealPeer, currentQ]);
 
   const handleToggleMic = () => {
     const next = !isMicOn;
@@ -337,42 +470,61 @@ export function PKActiveVoiceQuiz({
 
   const handleSelectOption = (idx: number) => {
     webrtcManagerRef.current?.unlockAudio();
-    if (userSubmitted) return;
+    if (userStatus !== "answering" || isBothSubmitted) return;
     setUserSelectedOption(idx);
     if (isRealPeer) {
-      voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
-        type: "select",
+      voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+        type: "select_option",
         questionIndex: currentQIndex,
+        userId: currentUser.id,
         optionIndex: idx,
       });
     }
   };
 
   const handleConfirmAnswer = () => {
-    if (userSelectedOption === null || userSubmitted) return;
-    setUserSubmitted(true);
+    if (userSelectedOption === null || userStatus !== "answering" || isBothSubmitted) return;
+    if (hasSubmittedQRef.current === currentQIndex) return;
+    hasSubmittedQRef.current = currentQIndex;
+
+    setUserStatus("submitted");
     const isCorrect = userSelectedOption === currentQ.correct;
     if (isCorrect) {
       setUserScoreCount((prev) => prev + 1);
     }
     if (isRealPeer) {
-      voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
-        type: "submit",
+      voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+        type: "submit_answer",
         questionIndex: currentQIndex,
+        userId: currentUser.id,
+        userName: currentUser.fullName,
         optionIndex: userSelectedOption,
         isCorrect,
+        status: "submitted",
       });
     }
   };
 
   const handleNextQuestion = () => {
+    if (!isBothSubmitted) return; // Core Rule: Chỉ chuyển câu khi cả hai đã hoàn thành
     if (currentQIndex + 1 < questions.length) {
       const nextIdx = currentQIndex + 1;
+      const now = Date.now();
       setCurrentQIndex(nextIdx);
+      setQuestionStartedAt(now);
+      setTimeLeft(60);
+      setUserStatus("answering");
+      setUserSelectedOption(null);
+      setPeerStatus("answering");
+      setPeerStoredOption(null);
+      hasSubmittedQRef.current = -1;
+
       if (isRealPeer) {
-        voiceRealtimeService.broadcastQuizAction(roomCode, currentUser.id, {
-          type: "next_question",
-          questionIndex: nextIdx,
+        voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+          type: "advance_question",
+          nextQuestionIndex: nextIdx,
+          startedAt: now,
+          durationSeconds: 60,
         });
       }
     }
@@ -777,7 +929,7 @@ export function PKActiveVoiceQuiz({
 
               {/* 🔒 "Chốt đáp án" button */}
               <div className="w-full sm:w-auto">
-                {!userSubmitted ? (
+                {userStatus === "answering" ? (
                   <button
                     type="button"
                     disabled={userSelectedOption === null}
@@ -791,10 +943,15 @@ export function PKActiveVoiceQuiz({
                     <Lock className="w-3.5 h-3.5" />
                     <span>Chốt đáp án</span>
                   </button>
-                ) : (
+                ) : userStatus === "submitted" ? (
                   <div className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#EDE9FE] text-[#7C3AED] font-black text-xs flex items-center justify-center gap-2 border border-[#7C3AED]/30">
                     <span className="w-2 h-2 rounded-full bg-[#7C3AED] animate-ping" />
-                    <span>Đang chờ {friendName} chốt đáp án...</span>
+                    <span>Bạn đã hoàn thành, đang chờ {friendName} chốt đáp án...</span>
+                  </div>
+                ) : (
+                  <div className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-50 text-rose-700 font-black text-xs flex items-center justify-center gap-2 border border-rose-200">
+                    <Clock className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Hết thời gian làm bài, đang chờ {friendName}...</span>
                   </div>
                 )}
               </div>
@@ -950,10 +1107,15 @@ export function PKActiveVoiceQuiz({
                     : "Đã tắt micro"}
                 </span>
 
-                {userSubmitted ? (
+                {userStatus === "submitted" ? (
                   <span className="font-black text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-md flex items-center gap-1">
                     <Lock className="w-3 h-3" />
                     <span>Đã chốt đáp án</span>
+                  </span>
+                ) : userStatus === "timeout" ? (
+                  <span className="font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-rose-500" />
+                    <span>Hết giờ</span>
                   </span>
                 ) : userSelectedOption !== null ? (
                   <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
@@ -1022,10 +1184,15 @@ export function PKActiveVoiceQuiz({
                     : "Đã tắt micro"}
                 </span>
 
-                {peerSubmitted ? (
+                {peerStatus === "submitted" ? (
                   <span className="font-black text-[#7C3AED] bg-[#EDE9FE] px-2 py-0.5 rounded-md flex items-center gap-1">
                     <Lock className="w-3 h-3" />
                     <span>Đã chốt đáp án</span>
+                  </span>
+                ) : peerStatus === "timeout" ? (
+                  <span className="font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-rose-500" />
+                    <span>Hết giờ</span>
                   </span>
                 ) : (
                   <span className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md flex items-center gap-1">
