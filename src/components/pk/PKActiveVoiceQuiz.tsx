@@ -137,16 +137,20 @@ export function PKActiveVoiceQuiz({
   >("connected");
   const [userIsSpeaking, setUserIsSpeaking] = useState(false);
   const [peerIsSpeaking, setPeerIsSpeaking] = useState(false);
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
 
-  // Web Audio Context for real microphone detection
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number | null>(null);
+  // Dedicated DOM Audio Element ref for peer voice
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Khởi tạo kết nối WebRTC Voice và lắng nghe đồng bộ phòng thời gian thực
   useEffect(() => {
     const manager = new WebRTCVoiceManager(roomCode, currentUser.id, isHost);
     webrtcManagerRef.current = manager;
+
+    // Gắn trực tiếp Audio Element từ React component
+    if (remoteAudioRef.current) {
+      manager.attachAudioElement(remoteAudioRef.current);
+    }
 
     manager.onLocalSpeaking = (volume) => {
       setUserIsSpeaking(volume > 15);
@@ -154,6 +158,14 @@ export function PKActiveVoiceQuiz({
 
     manager.onRemoteSpeaking = (volume) => {
       setPeerIsSpeaking(volume > 15);
+    };
+
+    manager.onAutoplayBlocked = (blocked) => {
+      setIsAutoplayBlocked(blocked);
+    };
+
+    manager.onRemoteAudioPlaying = () => {
+      setIsAutoplayBlocked(false);
     };
 
     manager.onConnectionStateChange = (state) => {
@@ -296,7 +308,9 @@ export function PKActiveVoiceQuiz({
     const next = !isSpeakerOn;
     setIsSpeakerOn(next);
     webrtcManagerRef.current?.setSpeakerEnabled(next);
-    webrtcManagerRef.current?.unlockAudio();
+    if (next) {
+      webrtcManagerRef.current?.unlockAudio();
+    }
   };
 
   const handleSelectOption = (idx: number) => {
@@ -493,6 +507,56 @@ export function PKActiveVoiceQuiz({
           </button>
         </div>
       </header>
+
+      {/* DEDICATED DOM AUDIO ELEMENT FOR PEER VOICE STREAM (React-managed) */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        id="studyflow-remote-audio-player"
+        style={{
+          position: "fixed",
+          top: "-9999px",
+          left: "-9999px",
+          width: "1px",
+          height: "1px",
+          opacity: 0.001,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* AUTOPLAY BLOCKED BANNER WITH ONE-CLICK "BẬT ÂM THANH" BUTTON */}
+      {isAutoplayBlocked && (
+        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 sm:px-8 py-3 flex items-center justify-between gap-4 shadow-lg animate-in slide-in-from-top-2 border-b border-amber-600 z-50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <VolumeX className="w-5 h-5 text-white animate-pulse" />
+            </div>
+            <div>
+              <span className="text-xs sm:text-sm font-black block">
+                Trình duyệt đang chặn âm thanh tự động từ bạn học!
+              </span>
+              <span className="text-[11px] text-white/90 font-medium">
+                Do chính sách bảo vệ tự động phát (Autoplay) của trình duyệt. Vui lòng bấm nút bên phải để kích hoạt loa:
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await webrtcManagerRef.current?.unlockAudio();
+              if (res) {
+                setIsAutoplayBlocked(false);
+              }
+            }}
+            className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-900 rounded-xl font-black text-xs transition-all shadow-md shrink-0 cursor-pointer active:scale-95 flex items-center gap-1.5"
+          >
+            <Volume2 className="w-4 h-4 text-amber-700" />
+            <span>Bật âm thanh</span>
+          </button>
+        </div>
+      )}
 
       {/* ========================================================= */}
       {/* MAIN TWO-COLUMN DESKTOP LAYOUT (MATCHING REFERENCE IMAGE) */}
