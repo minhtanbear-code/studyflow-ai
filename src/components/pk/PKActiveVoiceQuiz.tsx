@@ -46,6 +46,7 @@ interface PKActiveVoiceQuizProps {
   config?: QuizConfigData;
   isHost?: boolean;
   onLeave: () => void;
+  customQuestions?: QuizQuestion[];
 }
 
 export function PKActiveVoiceQuiz({
@@ -57,11 +58,15 @@ export function PKActiveVoiceQuiz({
   config,
   isHost = true,
   onLeave,
+  customQuestions,
 }: PKActiveVoiceQuizProps) {
-  // Questions list based on configured count
+  // Questions list based on configured count (or AI generated set)
   const questions: QuizQuestion[] = useMemo(() => {
+    if (customQuestions && customQuestions.length > 0) {
+      return customQuestions;
+    }
     return getQuestionsBySubject(subject.id || subject.name, config?.questionCount || 5);
-  }, [subject, config]);
+  }, [customQuestions, subject, config]);
 
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const currentQ = questions[currentQIndex] || questions[0];

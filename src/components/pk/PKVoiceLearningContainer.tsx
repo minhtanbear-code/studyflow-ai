@@ -6,14 +6,16 @@ import { PKQuizConfigurationScreen, QuizConfigData } from "./PKQuizConfiguration
 import { PKVoiceRoomSetup } from "./PKVoiceRoomSetup";
 import { PKActiveVoiceQuiz } from "./PKActiveVoiceQuiz";
 import { RoomDetails } from "./PKJoinCodeModal";
+import { QuizQuestion } from "@/core/data/quizQuestions";
 
 interface PKVoiceLearningContainerProps {
   subject: PKSubject;
   onLeave: () => void;
   initialJoinedRoom?: RoomDetails | null;
+  customQuestions?: QuizQuestion[];
 }
 
-export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }: PKVoiceLearningContainerProps) {
+export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom, customQuestions }: PKVoiceLearningContainerProps) {
   // Navigation step inside Voice Learning: "config" (Step 1) | "invitation" (Step 2) | "active" (Step 3)
   const [containerStep, setContainerStep] = useState<"config" | "invitation" | "active">(
     initialJoinedRoom ? "invitation" : "config"
@@ -75,6 +77,7 @@ export function PKVoiceLearningContainer({ subject, onLeave, initialJoinedRoom }
         friendAvatar={activeSession.friendAvatar}
         config={quizConfig}
         isHost={activeSession.isHost}
+        customQuestions={customQuestions}
         onLeave={() => {
           setActiveSession(null);
           if (initialJoinedRoom) {

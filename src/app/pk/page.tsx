@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { PKDocumentUploadScreen } from "@/components/pk/PKDocumentUploadScreen";
 import { PKDocumentAnalysisScreen } from "@/components/pk/PKDocumentAnalysisScreen";
 import { PKQuestionRecommendation } from "@/components/pk/PKQuestionRecommendation";
 import { PKQuestionReviewScreen } from "@/components/pk/PKQuestionReviewScreen";
+import { PKGameplaySelectionScreen, GameplayModeId } from "@/components/pk/PKGameplaySelectionScreen";
+import { PKActiveGameplayQuiz } from "@/components/pk/PKActiveGameplayQuiz";
+import { PKGamificationSummaryScreen, QuizSessionSummaryData } from "@/components/pk/PKGamificationSummaryScreen";
 import { PKSubjectSelectionScreen } from "@/components/pk/PKSubjectSelectionScreen";
 import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelectionScreen";
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
@@ -16,6 +19,7 @@ import { userService } from "@/core/services/userService";
 import { voiceRealtimeService, VoiceInvitation } from "@/core/services/voiceRealtimeService";
 import { MOCK_PK_SUBJECTS } from "@/core/data/mockPkData";
 import { PKSubject } from "@/core/domain/pk.types";
+import { QuizQuestion } from "@/core/data/quizQuestions";
 import {
   UploadedDocumentFile,
   DocumentAnalysisResult,
@@ -27,7 +31,17 @@ import { documentAnalysisService } from "@/core/services/documentAnalysisService
 
 export default function PKPage() {
   const [step, setStep] = useState<
-    "upload" | "analyzing" | "recommendation" | "review" | "subject" | "mode" | "friend_mode" | "voice_learning"
+    | "upload"
+    | "analyzing"
+    | "recommendation"
+    | "review"
+    | "gameplay_select"
+    | "gameplay_active"
+    | "gameplay_summary"
+    | "subject"
+    | "mode"
+    | "friend_mode"
+    | "voice_learning"
   >("upload");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedDocumentFile[]>([]);
   const [analysisResult, setAnalysisResult] = useState<DocumentAnalysisResult | null>(null);
@@ -36,6 +50,10 @@ export default function PKPage() {
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestionWithSource[]>([]);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [isSetConfirmedModalOpen, setIsSetConfirmedModalOpen] = useState(false);
+
+  // Gameplay session & Gamification state
+  const [activeGameplayMode, setActiveGameplayMode] = useState<GameplayModeId>("solo");
+  const [quizSummaryData, setQuizSummaryData] = useState<QuizSessionSummaryData | null>(null);
 
   const [selectedSubject, setSelectedSubject] = useState<PKSubject>(
     MOCK_PK_SUBJECTS.find((s) => s.id === "eco101") || MOCK_PK_SUBJECTS[1]
@@ -257,6 +275,21 @@ export default function PKPage() {
     setIsSetConfirmedModalOpen(true);
   };
 
+  // Convert generated questions for Voice Learning compatibility
+  const convertedVoiceQuestions: QuizQuestion[] = useMemo(() => {
+    return generatedQuestions.map((g) => ({
+      id: g.id,
+      subjectId: selectedSubject.id,
+      subjectName: selectedSubject.name,
+      topic: g.topic,
+      q: g.questionText,
+      options: g.options,
+      correct: g.correctAnswers[0] ?? 0,
+      explanation: g.explanation,
+      takeaway: `Trích từ tài liệu: ${g.sourceReference.excerpt || g.sourceReference.fileName}`,
+    }));
+  }, [generatedQuestions, selectedSubject]);
+
   return (
     <>
       <PKJoinCodeModal
@@ -316,7 +349,7 @@ export default function PKPage() {
                 type="button"
                 onClick={() => {
                   setIsSetConfirmedModalOpen(false);
-                  setStep("mode");
+                  setStep("gameplay_select");
                 }}
                 className="w-full py-3 px-4 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-black text-xs shadow-md shadow-purple-200 transition-all cursor-pointer"
               >
@@ -334,14 +367,66 @@ export default function PKPage() {
         </div>
       )}
 
-      {/* STEP 1: VOICE LEARNING / ROOMS (Preserved) */}
+      {/* NEW FLOW - STEP 4.3: GAMIFICATION SUMMARY SCREEN */}
+      {step === "gameplay_summary" && selectedSubject && quizSummaryData && (
+        <PKGamificationSummaryScreen
+          subject={selectedSubject}
+          sourceFileName={uploadedFiles[0]?.name || "Tài liệu học tập"}
+          questions={generatedQuestions}
+          summaryData={quizSummaryData}
+          onPlayAgain={() => setStep("gameplay_active")}
+          onNewDocument={() => {
+            setUploadedFiles([]);
+            setAnalysisResult(null);
+            setGeneratedQuestions([]);
+            setStep("upload");
+          }}
+          onBackToModes={() => setStep("gameplay_select")}
+        />
+      )}
+
+      {/* NEW FLOW - STEP 4.2: ACTIVE GAMEPLAY QUIZ ENGINE */}
+      {step === "gameplay_active" && selectedSubject && generatedQuestions.length > 0 && (
+        <PKActiveGameplayQuiz
+          subject={selectedSubject}
+          mode={activeGameplayMode}
+          questions={generatedQuestions}
+          sourceFileName={uploadedFiles[0]?.name || "Tài liệu học tập"}
+          onFinish={(summary) => {
+            setQuizSummaryData(summary);
+            setStep("gameplay_summary");
+          }}
+          onLeave={() => setStep("gameplay_select")}
+        />
+      )}
+
+      {/* NEW FLOW - STEP 4.1: GAMEPLAY SELECTION (5 MODES) */}
+      {step === "gameplay_select" && selectedSubject && generatedQuestions.length > 0 && (
+        <PKGameplaySelectionScreen
+          subject={selectedSubject}
+          questions={generatedQuestions}
+          sourceFileName={uploadedFiles[0]?.name || "Tài liệu học tập"}
+          onSelectMode={(modeId) => {
+            setActiveGameplayMode(modeId);
+            if (modeId === "voice_study") {
+              setStep("voice_learning");
+            } else {
+              setStep("gameplay_active");
+            }
+          }}
+          onBackToReview={() => setStep("review")}
+        />
+      )}
+
+      {/* STEP 1: VOICE LEARNING / ROOMS (Preserved & Consumes Generated Questions) */}
       {step === "voice_learning" && selectedSubject && (
         <PKVoiceLearningContainer
           subject={selectedSubject}
           initialJoinedRoom={joinedRoomData}
+          customQuestions={convertedVoiceQuestions.length > 0 ? convertedVoiceQuestions : undefined}
           onLeave={() => {
             setJoinedRoomData(null);
-            setStep("friend_mode");
+            setStep(generatedQuestions.length > 0 ? "gameplay_select" : "friend_mode");
           }}
         />
       )}
