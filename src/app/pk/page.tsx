@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { PKDocumentUploadScreen } from "@/components/pk/PKDocumentUploadScreen";
 import { PKSubjectSelectionScreen } from "@/components/pk/PKSubjectSelectionScreen";
 import { PKStudyModeSelectionScreen } from "@/components/pk/PKStudyModeSelectionScreen";
 import { PKFriendModeSelectionScreen } from "@/components/pk/PKFriendModeSelectionScreen";
@@ -12,9 +13,11 @@ import { userService } from "@/core/services/userService";
 import { voiceRealtimeService, VoiceInvitation } from "@/core/services/voiceRealtimeService";
 import { MOCK_PK_SUBJECTS } from "@/core/data/mockPkData";
 import { PKSubject } from "@/core/domain/pk.types";
+import { UploadedDocumentFile } from "@/core/domain/documentLearning.types";
 
 export default function PKPage() {
-  const [step, setStep] = useState<"subject" | "mode" | "friend_mode" | "voice_learning">("subject");
+  const [step, setStep] = useState<"upload" | "subject" | "mode" | "friend_mode" | "voice_learning">("upload");
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedDocumentFile[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<PKSubject>(
     MOCK_PK_SUBJECTS.find((s) => s.id === "eco101") || MOCK_PK_SUBJECTS[1]
   );
@@ -207,12 +210,24 @@ export default function PKPage() {
         <PKSubjectSelectionScreen
           initialSubjectId={selectedSubject?.id}
           initialSearchQuery={savedSearchQuery}
+          onBack={() => setStep("upload")}
           onOpenJoinCode={() => setIsJoinCodeOpen(true)}
           onSelectSubject={(subj, query) => {
             setSelectedSubject(subj);
             setSavedSearchQuery(query || "");
             setStep("mode");
           }}
+        />
+      )}
+
+      {step === "upload" && (
+        <PKDocumentUploadScreen
+          onOpenJoinCode={() => setIsJoinCodeOpen(true)}
+          onAnalyzeFiles={(files) => {
+            setUploadedFiles(files);
+            // Phase 1: Lưu trữ danh sách file đã xác thực thành công
+          }}
+          onFallbackSelectSubject={() => setStep("subject")}
         />
       )}
     </>
