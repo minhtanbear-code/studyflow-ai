@@ -47,14 +47,43 @@ export interface VoiceInvitation {
   created_at?: string;
 }
 
+export interface SyncedQuestion {
+  id: string; // currentQuestionId
+  q: string; // questionContent
+  options: string[]; // answerOptions: [A, B, C, D]
+  correct: number;
+  explanation: string;
+  topic: string;
+  optionsAnalysis?: string[];
+  takeaway?: string;
+  image?: string;
+}
+
+export interface VoiceRoomSession {
+  roomId: string; // room_code
+  roomSessionId: string; // unique session ID
+  questionSetId: string; // unique question set ID
+  subjectId: string;
+  subjectName: string;
+  questions: SyncedQuestion[];
+  currentQuestionIndex: number;
+  startTime: number; // timestamp in ms
+  duration: number; // seconds (default 60)
+  deadline: number; // startTime + duration * 1000 in ms
+  status: "active" | "completed";
+}
+
 export type PlayerQuizStatus = "answering" | "submitted" | "timeout";
 
 export type QuizSyncAction =
   | {
       type: "init_question";
       questionIndex: number;
-      startedAt: number;
-      durationSeconds: number;
+      startTime: number;
+      duration: number;
+      deadline: number;
+      startedAt?: number;
+      durationSeconds?: number;
     }
   | {
       type: "select_option";
@@ -74,8 +103,11 @@ export type QuizSyncAction =
   | {
       type: "advance_question";
       nextQuestionIndex: number;
-      startedAt: number;
-      durationSeconds: number;
+      startTime: number;
+      duration: number;
+      deadline: number;
+      startedAt?: number;
+      durationSeconds?: number;
     };
 
 export const voiceRealtimeService = {
@@ -377,6 +409,76 @@ export const voiceRealtimeService = {
       isActive = false;
       clearInterval(interval);
     };
+  },
+
+  /**
+   * Lưu hoặc cập nhật phiên làm bài chính thức của phòng (Single Source of Truth)
+   * Đảm bảo hai người tham gia phòng luôn nhận DUY NHẤT một bộ câu hỏi từ server
+   */
+  async saveRoomSession(session: VoiceRoomSession): Promise<boolean> {
+    try {
+      const code = session.roomId.trim().toUpperCase();
+      // Xóa phiên cũ nếu có của cùng phòng để duy trì phiên làm việc duy nhất
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(code)}&type=eq.room_session`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/webrtc_signals`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          room_code: code,
+          sender_id: "server",
+          type: "room_session",
+          payload: session,
+        }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn("saveRoomSession error:", e);
+      return false;
+    }
+  },
+
+  /**
+   * Lấy phiên làm bài chính thức của phòng
+   */
+  async getRoomSession(roomCode: string): Promise<VoiceRoomSession | null> {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/webrtc_signals?room_code=eq.${encodeURIComponent(
+          roomCode.trim().toUpperCase()
+        )}&type=eq.room_session&order=created_at.desc&limit=1`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0 && data[0].payload) {
+          return data[0].payload as VoiceRoomSession;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.warn("getRoomSession error:", e);
+      return null;
+    }
   },
 
   /**

@@ -39,6 +39,8 @@ import {
   voiceRealtimeService,
   PlayerQuizStatus,
   QuizSyncAction,
+  SyncedQuestion,
+  VoiceRoomSession,
 } from "@/core/services/voiceRealtimeService";
 import { WebRTCVoiceManager, WebRTCVoiceStats } from "@/core/services/webrtcService";
 import { QuizConfigData } from "./PKQuizConfigurationScreen";
@@ -66,27 +68,33 @@ export function PKActiveVoiceQuiz({
   onLeave,
   customQuestions,
 }: PKActiveVoiceQuizProps) {
-  // Questions list based on configured count (or AI generated set)
-  const questions: QuizQuestion[] = useMemo(() => {
-    if (customQuestions && customQuestions.length > 0) {
-      return customQuestions;
-    }
-    return getQuestionsBySubject(subject.id || subject.name, config?.questionCount || 5);
-  }, [customQuestions, subject, config]);
+  // Session đồng bộ câu hỏi chính thức từ Server (Single Source of Truth)
+  const [sessionData, setSessionData] = useState<VoiceRoomSession | null>(null);
+  const [syncedQuestions, setSyncedQuestions] = useState<SyncedQuestion[]>([]);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [sessionDeadline, setSessionDeadline] = useState<number>(Date.now() + 60000);
 
   const [currentQIndex, setCurrentQIndex] = useState(0);
-  const currentQ = questions[currentQIndex] || questions[0];
+  const questions = syncedQuestions;
+  const currentQ: SyncedQuestion =
+    questions[currentQIndex] ||
+    questions[0] ||
+    ({
+      id: "loading",
+      q: "Đang tải câu hỏi...",
+      options: ["...", "...", "...", "..."],
+      correct: 0,
+      explanation: "",
+      topic: "Đang tải",
+    } as SyncedQuestion);
 
-  // Countdown timer for current question (60 seconds)
+  // Countdown timer for current question (tính toán đồng bộ từ sessionDeadline)
   const [timeLeft, setTimeLeft] = useState(60);
 
   // Learning Support drawers/modals
   const [showHintModal, setShowHintModal] = useState(false);
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
-
-  // Mốc thời gian bắt đầu câu hỏi đồng bộ (Server Timestamp)
-  const [questionStartedAt, setQuestionStartedAt] = useState<number>(Date.now());
 
   // =========================================================
   // 1. PLAYER 1 (USER) STATE
@@ -122,12 +130,39 @@ export function PKActiveVoiceQuiz({
   const [partnerLeft, setPartnerLeft] = useState(false);
   const webrtcManagerRef = useRef<WebRTCVoiceManager | null>(null);
 
+  // Hàm chuẩn hóa bộ câu hỏi chính thức (chỉ Host gọi khi tạo mới phiên)
+  const buildCanonicalQuestions = (): SyncedQuestion[] => {
+    if (customQuestions && customQuestions.length > 0) {
+      return customQuestions.map((q, idx) => ({
+        id: q.id || `q-${idx + 1}`,
+        q: q.q,
+        options: q.options,
+        correct: q.correct,
+        explanation: q.explanation || "",
+        topic: q.topic || subject.name,
+        optionsAnalysis: q.optionsAnalysis,
+        takeaway: q.takeaway,
+      }));
+    }
+    const base = getQuestionsBySubject(subject.id || subject.name, config?.questionCount || 10);
+    return base.map((q, idx) => ({
+      id: q.id || `q-${idx + 1}`,
+      q: q.q,
+      options: q.options,
+      correct: q.correct,
+      explanation: q.explanation || "",
+      topic: q.topic || subject.name,
+      optionsAnalysis: q.optionsAnalysis,
+      takeaway: q.takeaway,
+    }));
+  };
+
   // Tái thiết lập trạng thái từ lịch sử phòng (phục hồi khi F5 / reconnect)
   const reconstructStateFromHistory = (
     history: Array<{ id: string; sender_id: string; payload: QuizSyncAction; created_at: string }>
   ) => {
     let maxQ = 0;
-    let startedTime = Date.now();
+    let targetDeadline = Date.now() + 60000;
     let uScore = 0;
     let pScore = 0;
     let uStatus: PlayerQuizStatus = "answering";
@@ -141,7 +176,10 @@ export function PKActiveVoiceQuiz({
         const qIdx = act.type === "init_question" ? act.questionIndex : act.nextQuestionIndex;
         if (qIdx >= maxQ) {
           maxQ = qIdx;
-          startedTime = act.startedAt || new Date(item.created_at).getTime();
+          targetDeadline =
+            act.deadline ||
+            ((act.startTime || act.startedAt || new Date(item.created_at).getTime()) +
+              (act.duration || act.durationSeconds || 60) * 1000);
           uStatus = "answering";
           uOpt = null;
           pStatus = "answering";
@@ -166,7 +204,7 @@ export function PKActiveVoiceQuiz({
     }
 
     setCurrentQIndex(maxQ);
-    setQuestionStartedAt(startedTime);
+    setSessionDeadline(targetDeadline);
     setUserStatus(uStatus);
     setUserSelectedOption(uOpt);
     setUserScoreCount(uScore);
@@ -174,39 +212,102 @@ export function PKActiveVoiceQuiz({
     setPeerStoredOption(pOpt);
     setPeerScoreCount(pScore);
 
-    const elapsed = Math.floor((Date.now() - startedTime) / 1000);
-    setTimeLeft(Math.max(0, 60 - elapsed));
+    const remaining = Math.max(0, Math.ceil((targetDeadline - Date.now()) / 1000));
+    setTimeLeft(remaining);
   };
 
-  // Lắng nghe đồng bộ câu hỏi thời gian thực và khôi phục khi tải lại trang
+  // Đồng bộ hóa phiên câu hỏi chính thức (Single Source of Truth) từ Server
   useEffect(() => {
-    // 1. Phục hồi trạng thái phòng từ server
-    voiceRealtimeService.getQuizSyncHistory(roomCode).then((history) => {
-      if (history && history.length > 0) {
-        reconstructStateFromHistory(history);
+    let isSubscribed = true;
+    let pollingTimer: NodeJS.Timeout | null = null;
+
+    const setupSession = async () => {
+      // 1. Kiểm tra session có sẵn trên Server
+      const remoteSession = await voiceRealtimeService.getRoomSession(roomCode);
+      if (remoteSession && remoteSession.questions && remoteSession.questions.length > 0) {
+        if (!isSubscribed) return;
+        setSessionData(remoteSession);
+        setSyncedQuestions(remoteSession.questions);
+        setSessionDeadline(remoteSession.deadline || Date.now() + 60000);
+        setIsLoadingSession(false);
       } else if (isHost) {
+        // Chủ phòng khởi tạo phiên học tập chính thức duy nhất
         const now = Date.now();
-        setQuestionStartedAt(now);
-        setTimeLeft(60);
-        voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
+        const deadline = now + 60000;
+        const canonical = buildCanonicalQuestions();
+        const newSession: VoiceRoomSession = {
+          roomId: roomCode,
+          roomSessionId: `sess-${roomCode.replace(/[^A-Za-z0-9]/g, "")}-${now}`,
+          questionSetId: `qset-${subject.id || "eco101"}-${now}`,
+          subjectId: subject.id || "eco101",
+          subjectName: subject.name,
+          questions: canonical,
+          currentQuestionIndex: 0,
+          startTime: now,
+          duration: 60,
+          deadline,
+          status: "active",
+        };
+
+        await voiceRealtimeService.saveRoomSession(newSession);
+        await voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
           type: "init_question",
           questionIndex: 0,
+          startTime: now,
+          duration: 60,
+          deadline,
           startedAt: now,
           durationSeconds: 60,
         });
+
+        if (!isSubscribed) return;
+        setSessionData(newSession);
+        setSyncedQuestions(canonical);
+        setSessionDeadline(deadline);
+        setIsLoadingSession(false);
+      } else {
+        // Khách đợi phiên từ Server (polling chu kỳ 400ms)
+        let attempts = 0;
+        pollingTimer = setInterval(async () => {
+          attempts++;
+          const sess = await voiceRealtimeService.getRoomSession(roomCode);
+          if (sess && sess.questions && sess.questions.length > 0) {
+            if (pollingTimer) clearInterval(pollingTimer);
+            if (!isSubscribed) return;
+            setSessionData(sess);
+            setSyncedQuestions(sess.questions);
+            setSessionDeadline(sess.deadline || Date.now() + 60000);
+            setIsLoadingSession(false);
+          } else if (attempts > 30) {
+            // Hết 12 giây timeout, fallback dự phòng
+            if (pollingTimer) clearInterval(pollingTimer);
+            if (!isSubscribed) return;
+            const fallback = buildCanonicalQuestions();
+            setSyncedQuestions(fallback);
+            setSessionDeadline(Date.now() + 60000);
+            setIsLoadingSession(false);
+          }
+        }, 400);
       }
-    });
+
+      // 2. Khôi phục lịch sử phòng nếu F5 lại
+      const history = await voiceRealtimeService.getQuizSyncHistory(roomCode);
+      if (history && history.length > 0 && isSubscribed) {
+        reconstructStateFromHistory(history);
+      }
+    };
+
+    setupSession();
 
     if (!isRealPeer) return;
 
-    // 2. Lắng nghe liên tục các sự kiện realtime
-    const unsub = voiceRealtimeService.subscribeToQuizSync(roomCode, (action, senderId, createdAt) => {
+    // 3. Lắng nghe các sự kiện đồng bộ realtime
+    const unsub = voiceRealtimeService.subscribeToQuizSync(roomCode, (action) => {
       if (action.type === "init_question") {
         if (action.questionIndex === currentQIndex) {
-          const sAt = action.startedAt || new Date(createdAt).getTime();
-          setQuestionStartedAt(sAt);
-          const elapsed = Math.floor((Date.now() - sAt) / 1000);
-          setTimeLeft(Math.max(0, action.durationSeconds - elapsed));
+          const dLine = action.deadline || ((action.startTime || action.startedAt || Date.now()) + 60000);
+          setSessionDeadline(dLine);
+          setTimeLeft(Math.max(0, Math.ceil((dLine - Date.now()) / 1000)));
         }
       } else if (action.type === "submit_answer") {
         if (action.questionIndex === currentQIndex) {
@@ -224,9 +325,9 @@ export function PKActiveVoiceQuiz({
       } else if (action.type === "advance_question") {
         if (action.nextQuestionIndex > currentQIndex) {
           setCurrentQIndex(action.nextQuestionIndex);
-          const sAt = action.startedAt || new Date(createdAt).getTime();
-          setQuestionStartedAt(sAt);
-          setTimeLeft(action.durationSeconds || 60);
+          const dLine = action.deadline || ((action.startTime || action.startedAt || Date.now()) + 60000);
+          setSessionDeadline(dLine);
+          setTimeLeft(Math.max(0, Math.ceil((dLine - Date.now()) / 1000)));
           setUserStatus("answering");
           setUserSelectedOption(null);
           setPeerStatus("answering");
@@ -236,7 +337,11 @@ export function PKActiveVoiceQuiz({
       }
     });
 
-    return () => unsub();
+    return () => {
+      isSubscribed = false;
+      if (pollingTimer) clearInterval(pollingTimer);
+      unsub();
+    };
   }, [roomCode, currentUser.id, isHost, currentQIndex, isRealPeer]);
 
   // =========================================================
@@ -359,12 +464,12 @@ export function PKActiveVoiceQuiz({
     }
   }, [isBothSubmitted, isMusicOn, userSelectedOption, peerSelectedOption, currentQ]);
 
-  // Countdown Timer Effect with subtle tick & synchronized server timestamp
+  // Countdown Timer Effect with synchronized server deadline (Single Source of Truth)
   useEffect(() => {
-    if (isBothSubmitted) return;
-    const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - questionStartedAt) / 1000);
-      const remaining = Math.max(0, 60 - elapsed);
+    if (isLoadingSession || isBothSubmitted || !sessionDeadline) return;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((sessionDeadline - Date.now()) / 1000));
       setTimeLeft(remaining);
 
       if (remaining <= 4 && remaining > 1 && isMusicOn) {
@@ -383,7 +488,7 @@ export function PKActiveVoiceQuiz({
               userId: currentUser.id,
               userName: currentUser.fullName,
               optionIndex: userSelectedOption,
-              isCorrect: userSelectedOption !== null && userSelectedOption === currentQ.correct,
+              isCorrect: userSelectedOption !== null && currentQ && userSelectedOption === currentQ.correct,
               status: "timeout",
             });
           }
@@ -392,12 +497,16 @@ export function PKActiveVoiceQuiz({
           setPeerStatus("timeout");
         }
       }
-    }, 1000);
+    };
+
+    tick();
+    const timer = setInterval(tick, 1000);
 
     return () => clearInterval(timer);
   }, [
+    isLoadingSession,
     isBothSubmitted,
-    questionStartedAt,
+    sessionDeadline,
     userStatus,
     peerStatus,
     currentQIndex,
@@ -510,8 +619,9 @@ export function PKActiveVoiceQuiz({
     if (currentQIndex + 1 < questions.length) {
       const nextIdx = currentQIndex + 1;
       const now = Date.now();
+      const newDeadline = now + 60000;
       setCurrentQIndex(nextIdx);
-      setQuestionStartedAt(now);
+      setSessionDeadline(newDeadline);
       setTimeLeft(60);
       setUserStatus("answering");
       setUserSelectedOption(null);
@@ -523,6 +633,9 @@ export function PKActiveVoiceQuiz({
         voiceRealtimeService.broadcastQuizSyncAction(roomCode, currentUser.id, {
           type: "advance_question",
           nextQuestionIndex: nextIdx,
+          startTime: now,
+          duration: 60,
+          deadline: newDeadline,
           startedAt: now,
           durationSeconds: 60,
         });
@@ -531,6 +644,28 @@ export function PKActiveVoiceQuiz({
   };
 
   const optionLetters = ["A", "B", "C", "D"];
+
+  if (isLoadingSession || questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#F8F7FC] flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-8 border border-[#E8E4F3] shadow-md max-w-md w-full text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#EDE9FE] text-[#7C3AED] flex items-center justify-center mx-auto animate-pulse">
+            <Sparkles className="w-7 h-7" />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-[#17133B]">Đang kết nối phòng Voice học</h3>
+            <p className="text-xs text-[#77738F] font-medium mt-1">
+              Đang đồng bộ bộ câu hỏi chính thức cho phòng <span className="font-bold text-[#7C3AED]">{roomCode}</span>...
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#7C3AED]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Đang tải dữ liệu từ máy chủ...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F7FC] text-[#17133B] flex flex-col font-sans antialiased selection:bg-[#EDE9FE] selection:text-[#7C3AED]">
